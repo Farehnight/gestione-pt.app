@@ -2160,20 +2160,29 @@
             document.getElementById('clientDetailModal').classList.remove('active');
         }
 
-        function openAddSessionModal() {
-            editingSessionId = null;
-            document.getElementById('sessionForm').reset();
-            document.getElementById('sessionDuration').value = '60';
-            document.querySelector('#sessionModal .modal-title').textContent = 'Aggiungi Sessione';
-            
-            const select = document.getElementById('sessionClient');
-            select.innerHTML = '<option value="">Seleziona cliente</option>' + 
-                clients.filter(c => c.status === 'active').map(c => 
-                    `<option value="${c.id}">${c.name} ${c.surname}</option>`
-                ).join('');
+        function openAddSessionModal(dateStr) {
+    try {
+        editingSessionId = null;
+        document.getElementById('sessionForm').reset();
+        document.getElementById('sessionId').value = '';
+        var dur = document.getElementById('sessionDuration');
+        if(dur) dur.value = '60';
 
-            document.getElementById('sessionModal').classList.add('active');
-        }
+        var d = new Date();
+        document.getElementById('sessionDate').value =
+            (typeof dateStr === 'string' && dateStr.length >= 10)
+                ? dateStr.slice(0,10)
+                : d.toISOString().slice(0,10);
+
+        const minutes = d.getMinutes() >= 30 ? '30' : '00';
+        document.getElementById('sessionTime').value =
+            String(d.getHours()).padStart(2,'0') + ':' + minutes;
+
+        document.getElementById('sessionModalTitle').textContent = 'Nuova Sessione';
+        if(typeof updateSessionExerciseList === 'function') updateSessionExerciseList();
+        document.getElementById('sessionModal').style.display = 'flex';
+    } catch(e) { console.error('Errore apertura modale sessione', e); }
+}
 
         function editSession(id) {
             editingSessionId = id;
@@ -2211,7 +2220,7 @@
                 clientId: document.getElementById('sessionClient').value,
                 date: document.getElementById('sessionDate').value,
                 time: document.getElementById('sessionTime').value,
-                duration: parseInt(document.getElementById('sessionDuration').value),
+                duration: parseInt(document.getElementById('sessionDuration').value) || 60,
                 type: document.getElementById('sessionType').value,
                 notes: document.getElementById('sessionNotes').value,
                 updatedAt: new Date().toISOString()
@@ -3619,7 +3628,7 @@ function renderDayCell(date, isOtherMonth, today){
 
     var daySess = sessions.filter(function(s){ return s.date === dateStr; }).sort(function(a,b){ return a.time.localeCompare(b.time); });
 
-    var html = '<div class="'+cls+'" data-date="'+dateStr+'">';
+    var html = '<div class="'+cls+'" data-date="'+dateStr+'" onclick="openAddSessionModal(\''+ dateStr +'\')">';
     html += '<div class="cal-day-num">' + date.getDate() + '</div>';
 
     daySess.forEach(function(s){
@@ -3740,6 +3749,13 @@ function gcalRequest(method,url,body,cb){
     fetch(url,opts).then(function(r){return r.json();}).then(function(data){cb(data);}).catch(function(err){cb(null);});
 }
 
+
+function toLocalISOString(d) {
+    var pad = function(n){ return n < 10 ? '0'+n : ''+n; };
+    return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+
+           'T'+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds());
+}
+
 function createGoogleEvent(s,cb){
     var cl=clients.find(function(c){return c.id===s.clientId;}),name=cl?cl.name:'Cliente';
     var start=s.date+'T'+s.time+':00';
@@ -3749,7 +3765,7 @@ function createGoogleEvent(s,cb){
         summary:'Sessione '+name+' - '+s.type,
         description:s.notes||'',
         start:{dateTime:start,timeZone:'Europe/Rome'},
-        end:{dateTime:endD.toISOString().slice(0,19),timeZone:'Europe/Rome'}
+        end:{dateTime:toLocalISOString(endD),timeZone:'Europe/Rome'}
     };
     gcalRequest('POST','https://www.googleapis.com/calendar/v3/calendars/primary/events',body,function(data){
         if(data&&data.id){s.googleEventId=data.id;if(cb)cb(true);}
@@ -3766,7 +3782,7 @@ function updateGoogleEvent(s){
     var body={
         summary:'Sessione '+name+' - '+s.type,
         start:{dateTime:start,timeZone:'Europe/Rome'},
-        end:{dateTime:endD.toISOString().slice(0,19),timeZone:'Europe/Rome'}
+        end:{dateTime:toLocalISOString(endD),timeZone:'Europe/Rome'}
     };
     gcalRequest('PATCH','https://www.googleapis.com/calendar/v3/calendars/primary/events/'+s.googleEventId,body,function(){saveData();});
 }
