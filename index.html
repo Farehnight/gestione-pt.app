@@ -2226,6 +2226,13 @@
             }
 
             saveData();
+            if(typeof googleConnected !== 'undefined' && googleConnected) {
+                if(editingSessionId && sessionData.googleEventId) {
+                    updateGoogleEvent(sessionData);
+                } else {
+                    createGoogleEvent(sessionData);
+                }
+            }
             closeSessionModal();
             renderSessions();
             updateDashboard();
@@ -2236,7 +2243,12 @@
         function deleteSession(id) {
             if (!confirm('Eliminare questa sessione?')) return;
             sessions = sessions.filter(s => s.id !== id);
-            saveData();
+            
+                var s = sessions.find(x => x.id === id);
+                if(s && s.googleEventId && typeof googleConnected !== 'undefined' && googleConnected) {
+                    deleteGoogleEvent(s.googleEventId);
+                }
+                saveData();
             renderSessions();
             updateDashboard();
         }
@@ -3729,6 +3741,12 @@ function syncAllToGoogle(){
             }
         });
     });
+}
+
+
+function deleteGoogleEvent(eventId){
+    if(!eventId || !googleConnected || !gcalToken) return;
+    gcalRequest('DELETE', 'https://www.googleapis.com/calendar/v3/calendars/primary/events/'+eventId, null, function(){});
 }
 
 function gcalRequest(method,url,body,cb){
