@@ -1144,16 +1144,14 @@
                     <button class="btn btn-secondary btn-small" onclick="calToday()">Oggi</button>
                 </div>
                 <div class="cal-nav" style="gap:6px;">
-                    <button id="btnViewWeek" class="btn btn-primary btn-small" onclick="setCalView('week')">&#128197; Settimana</button>
+                    <button id="btnViewWeek" class="btn btn-primary btn-small" onclick="setCalView('month')">&#128197; Mese</button>
                     <button id="btnViewList" class="btn btn-secondary btn-small" onclick="setCalView('list')">&#128203; Lista</button>
                     <button id="btnGoogleSync" class="btn btn-secondary btn-small" onclick="googleCalendarSync()">&#128279; Google</button>
                 </div>
             </div>
-            <div id="calWeekView" style="display:none;overflow-x:auto;">
-                <div id="calGrid"></div>
-            </div>
+            <div id="calMonthView" style="display:none;width:100%;"><div id="calGrid"></div></div>
             <div id="sessionsList" style="display:none;"></div>
-            <button class="fab" onclick="openAddSessionModal()">+</button>
+            <button class="fab" onclick="openAddSessionModalFixed()">+</button>
         </div>
 
         <!-- Progress Tab -->
@@ -3509,7 +3507,8 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
         initAppTitle();
 
 
-var calView = 'week';
+
+var calView = 'month';
 var calCurrentDate = new Date();
 var CLIENT_COLORS = ['#0ea5e9','#9333ea','#f97316','#16a34a','#ec4899','#f43f5e','#06b6d4','#f59e0b','#334155','#10b981'];
 var draggedSessionId = null;
@@ -3518,73 +3517,75 @@ function getClientColor(clientId){
     var idx=clients.findIndex(function(c){return c.id===clientId;});
     return CLIENT_COLORS[(idx<0?0:idx)%CLIENT_COLORS.length];
 }
-function getWeekStart(date){
-    var d=new Date(date),day=d.getDay(),diff=(day===0)?-6:1-day;
-    d.setDate(d.getDate()+diff);d.setHours(0,0,0,0);return d;
-}
+
 function setCalView(v){
     calView=v;
-    document.getElementById('btnViewWeek').className='btn btn-small '+(v==='week'?'btn-primary':'btn-secondary');
+    document.getElementById('btnViewMonth').className='btn btn-small '+(v==='month'?'btn-primary':'btn-secondary');
     document.getElementById('btnViewList').className='btn btn-small '+(v==='list'?'btn-primary':'btn-secondary');
     renderSessions();
 }
-function calPrev(){if(calView==='week')calCurrentDate.setDate(calCurrentDate.getDate()-7);else calCurrentDate.setMonth(calCurrentDate.getMonth()-1);renderSessions();}
-function calNext(){if(calView==='week')calCurrentDate.setDate(calCurrentDate.getDate()+7);else calCurrentDate.setMonth(calCurrentDate.getMonth()+1);renderSessions();}
-function calToday(){calCurrentDate=new Date();renderSessions();}
+
+function calPrev(){ if(calView==='month') calCurrentDate.setMonth(calCurrentDate.getMonth()-1); renderSessions(); }
+function calNext(){ if(calView==='month') calCurrentDate.setMonth(calCurrentDate.getMonth()+1); renderSessions(); }
+function calToday(){ calCurrentDate=new Date(); renderSessions(); }
 
 function renderSessions(){
-    var weekView=document.getElementById('calWeekView');
+    var monthView=document.getElementById('calMonthView');
     var listView=document.getElementById('sessionsList');
-    if(!weekView||!listView)return;
-    if(calView==='week'){weekView.style.display='block';listView.style.display='none';renderWeekView();}
-    else{weekView.style.display='none';listView.style.display='block';renderListView();}
+    if(!monthView||!listView)return;
+    if(calView==='month'){ monthView.style.display='block'; listView.style.display='none'; renderMonthView(); }
+    else { monthView.style.display='none'; listView.style.display='block'; renderListView(); }
 }
 
-function buildSlotClass(isToday){ return isToday ? 'cal-slot today-col' : 'cal-slot'; }
+function renderMonthView(){
+    var year = calCurrentDate.getFullYear();
+    var month = calCurrentDate.getMonth();
+    var firstDay = new Date(year, month, 1);
+    var lastDay = new Date(year, month + 1, 0);
 
-function renderWeekView(){
-    var weekStart=getWeekStart(calCurrentDate),days=[];
-    for(var i=0;i<7;i++){var dd=new Date(weekStart);dd.setDate(weekStart.getDate()+i);days.push(dd);}
-    var today=new Date();today.setHours(0,0,0,0);
-    var dayNames=['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
-    var hours=[];for(var h=7;h<=21;h++)hours.push(h);
-    document.getElementById('calTitle').textContent=
-        days[0].toLocaleDateString('it-IT',{day:'numeric',month:'short'})+' - '+
-        days[6].toLocaleDateString('it-IT',{day:'numeric',month:'short',year:'numeric'});
+    var monthNames = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+    document.getElementById('calTitle').textContent = monthNames[month] + ' ' + year;
 
-    var parts=[];
-    parts.push('<div class="cal-grid"><div class="cal-header-row"><div class="cal-header-cell"></div>');
-    days.forEach(function(d,i){
-        var isT=d.getTime()===today.getTime();
-        parts.push('<div class="cal-header-cell'+(isT?' today-col':'')+'">'+dayNames[i]+'<br><span style="font-size:14px;font-weight:'+(isT?'800':'600')+'">'+d.getDate()+'</span></div>');
-    });
+    var dayNames = ['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
+    var parts = [];
+    parts.push('<div class="cal-grid"><div class="cal-header-row">');
+    dayNames.forEach(function(d){ parts.push('<div class="cal-header-cell">' + d + '</div>'); });
     parts.push('</div><div class="cal-body">');
-    hours.forEach(function(h){
-        parts.push('<div class="cal-time-label">'+h+':00</div>');
-        days.forEach(function(d){
-            var isT=d.getTime()===today.getTime();
-            var dateStr=d.toISOString().slice(0,10);
-            var slotSess=sessions.filter(function(s){return s.date===dateStr&&parseInt(s.time.split(':')[0])===h;});
-            parts.push('<div class="'+buildSlotClass(isT)+'" data-date="'+dateStr+'" data-hour="'+h+'">');
-            slotSess.forEach(function(s){
-                var cl=clients.find(function(c){return c.id===s.clientId;});
-                var name=cl?cl.name.split(' ')[0]:'Cliente';
-                var color=getClientColor(s.clientId);
-                parts.push('<div class="cal-event" style="background:'+color+'" draggable="true" data-sid="'+s.id+'">'+s.time+' '+name+'</div>');
-            });
-            parts.push('</div>');
-        });
-    });
+
+    var today = new Date(); today.setHours(0,0,0,0);
+    var startDay = firstDay.getDay(); 
+    if(startDay === 0) startDay = 7;
+
+    var prevMonthDays = startDay - 1;
+    for(var i=prevMonthDays; i>0; i--){
+        var d = new Date(year, month, 1-i);
+        parts.push(renderDayCell(d, true, today));
+    }
+
+    for(var i=1; i<=lastDay.getDate(); i++){
+        var d = new Date(year, month, i);
+        parts.push(renderDayCell(d, false, today));
+    }
+
+    var totalCells = prevMonthDays + lastDay.getDate();
+    var nextMonthDays = totalCells > 35 ? 42 - totalCells : 35 - totalCells;
+    for(var i=1; i<=nextMonthDays; i++){
+        var d = new Date(year, month+1, i);
+        parts.push(renderDayCell(d, true, today));
+    }
+
     parts.push('</div></div>');
     var grid=document.getElementById('calGrid');
-    grid.innerHTML=parts.join('');
+    grid.innerHTML = parts.join('');
 
+    // Attach listeners
     grid.querySelectorAll('.cal-event').forEach(function(el){
         el.addEventListener('dragstart',function(e){draggedSessionId=this.dataset.sid;this.classList.add('dragging');e.dataTransfer.effectAllowed='move';});
         el.addEventListener('dragend',function(){this.classList.remove('dragging');});
-        el.addEventListener('click',function(){editSession(this.dataset.sid);});
+        el.addEventListener('click',function(e){e.stopPropagation(); editSession(this.dataset.sid);});
     });
-    grid.querySelectorAll('.cal-slot').forEach(function(el){
+
+    grid.querySelectorAll('.cal-cell').forEach(function(el){
         el.addEventListener('dragover',function(e){e.preventDefault();this.classList.add('drag-over');});
         el.addEventListener('dragleave',function(){this.classList.remove('drag-over');});
         el.addEventListener('drop',function(e){
@@ -3592,15 +3593,58 @@ function renderWeekView(){
             if(!draggedSessionId)return;
             var s=sessions.find(function(x){return x.id===draggedSessionId;});
             if(!s)return;
-            var mins=s.time.split(':')[1]||'00';
             s.date=this.dataset.date;
-            s.time=String(this.dataset.hour).padStart(2,'0')+':'+mins;
             s.updatedAt=new Date().toISOString();
             saveData();renderSessions();updateDashboard();
-            if(googleConnected&&s.googleEventId)updateGoogleEvent(s);
+            if(typeof updateGoogleEvent !== 'undefined' && s.googleEventId) updateGoogleEvent(s);
             draggedSessionId=null;
         });
+        el.addEventListener('click',function(){
+            var dateStr = this.dataset.date;
+            openAddSessionModalFixed(dateStr);
+        });
     });
+}
+
+function renderDayCell(date, isOtherMonth, today){
+    var isT = date.getTime()===today.getTime();
+    var dateStr = date.getFullYear() + '-' + String(date.getMonth()+1).padStart(2,'0') + '-' + String(date.getDate()).padStart(2,'0');
+
+    var cls = 'cal-cell';
+    if(isOtherMonth) cls += ' other-month';
+    if(isT) cls += ' today';
+
+    var daySess = sessions.filter(function(s){ return s.date === dateStr; }).sort(function(a,b){ return a.time.localeCompare(b.time); });
+
+    var html = '<div class="'+cls+'" data-date="'+dateStr+'">';
+    html += '<div class="cal-day-num">' + date.getDate() + '</div>';
+
+    daySess.forEach(function(s){
+        var cl = clients.find(function(c){return c.id===s.clientId;});
+        var name = cl ? cl.name.split(' ')[0] : 'Cliente';
+        var color = getClientColor(s.clientId);
+        html += '<div class="cal-event" style="background:'+color+'" draggable="true" data-sid="'+s.id+'" title="'+name+' '+s.time+'">'+s.time+' '+name+'</div>';
+    });
+
+    html += '</div>';
+    return html;
+}
+
+function openAddSessionModalFixed(dateStr){
+    document.getElementById('sessionForm').reset();
+    document.getElementById('sessionId').value = '';
+    editingSessionId = null;
+
+    var d = new Date();
+    document.getElementById('sessionDate').value = (typeof dateStr === 'string') ? dateStr : d.toISOString().slice(0,10);
+
+    var m = d.getMinutes();
+    d.setMinutes(m >= 30 ? 60 : 30);
+    document.getElementById('sessionTime').value = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+
+    document.getElementById('sessionModalTitle').textContent = 'Nuova Sessione';
+    document.getElementById('sessionModal').style.display = 'flex';
+    updateSessionExerciseList();
 }
 
 function renderListView(){
