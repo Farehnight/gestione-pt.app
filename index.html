@@ -3633,22 +3633,7 @@ function renderDayCell(date, isOtherMonth, today){
     return html;
 }
 
-function openAddSessionModal(dateStr){
-    document.getElementById('sessionForm').reset();
-    document.getElementById('sessionId').value = '';
-    editingSessionId = null;
 
-    var d = new Date();
-    document.getElementById('sessionDate').value = (typeof dateStr === 'string') ? dateStr : d.toISOString().slice(0,10);
-
-    var m = d.getMinutes();
-    d.setMinutes(m >= 30 ? 60 : 30);
-    document.getElementById('sessionTime').value = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
-
-    document.getElementById('sessionModalTitle').textContent = 'Nuova Sessione';
-    document.getElementById('sessionModal').style.display = 'flex';
-    updateSessionExerciseList();
-}
 
 function renderListView(){
     var container=document.getElementById('sessionsList');
