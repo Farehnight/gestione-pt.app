@@ -1181,7 +1181,7 @@
             </div>
             <div id="calMonthView" style="display:none;width:100%;"><div id="calGrid"></div></div>
             <div id="sessionsList" style="display:none;"></div>
-            <button class="fab" onclick="openAddSessionModalFixed()">+</button>
+            <button class="fab" onclick="openAddSessionModal()">+</button>
         </div>
 
         <!-- Progress Tab -->
@@ -3604,7 +3604,7 @@ function renderMonthView(){
         });
         el.addEventListener('click',function(){
             var dateStr = this.dataset.date;
-            openAddSessionModalFixed(dateStr);
+            openAddSessionModal(dateStr);
         });
     });
 }
@@ -3633,7 +3633,7 @@ function renderDayCell(date, isOtherMonth, today){
     return html;
 }
 
-function openAddSessionModalFixed(dateStr){
+function openAddSessionModal(dateStr){
     document.getElementById('sessionForm').reset();
     document.getElementById('sessionId').value = '';
     editingSessionId = null;
