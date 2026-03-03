@@ -2161,41 +2161,32 @@
         }
 
         function openAddSessionModal(dateStr) {
-    editingSessionId = null;
+            editingSessionId = null;
+            document.getElementById('sessionForm').reset();
+            document.getElementById('sessionDuration').value = '60';
+            document.querySelector('#sessionModal .modal-title').textContent = 'Aggiungi Sessione';
 
-    // Apro il modal prima di tutto
-    document.getElementById('sessionModal').classList.add('active');
+            const select = document.getElementById('sessionClient');
+            select.innerHTML = '<option value="">Seleziona cliente</option>' + 
+                clients.filter(c => c.status === 'active').map(c => 
+                    `<option value="${c.id}">${c.name} ${c.surname}</option>`
+                ).join('');
 
-    // Reset form
-    var form = document.getElementById('sessionForm');
-    if(form) form.reset();
-    var sid = document.getElementById('sessionId');
-    if(sid) sid.value = '';
-    var dur = document.getElementById('sessionDuration');
-    if(dur) dur.value = '60';
+            // Imposta data: usa dateStr se fornita, altrimenti oggi
+            if (typeof dateStr === 'string' && dateStr.length >= 10) {
+                document.getElementById('sessionDate').value = dateStr.slice(0, 10);
+            } else {
+                document.getElementById('sessionDate').value = new Date().toISOString().slice(0, 10);
+            }
 
-    // Data
-    var d = new Date();
-    var dateVal = (typeof dateStr === 'string' && dateStr.length >= 10)
-        ? dateStr.slice(0,10)
-        : d.toISOString().slice(0,10);
-    var dateEl = document.getElementById('sessionDate');
-    if(dateEl) dateEl.value = dateVal;
+            // Arrotonda all'ora/mezz'ora più vicina
+            const now = new Date();
+            const minutes = now.getMinutes() >= 30 ? '30' : '00';
+            document.getElementById('sessionTime').value = 
+                String(now.getHours()).padStart(2, '0') + ':' + minutes;
 
-    // Ora
-    var timeEl = document.getElementById('sessionTime');
-    if(timeEl) {
-        const minutes = d.getMinutes() >= 30 ? '30' : '00';
-        timeEl.value = String(d.getHours()).padStart(2,'0') + ':' + minutes;
-    }
-
-    // Titolo del modal (con qualunque id o classe abbia)
-    var titleEl = document.getElementById('sessionModalTitle') ||
-                  document.querySelector('#sessionModal .modal-title');
-    if(titleEl) titleEl.textContent = 'Nuova Sessione';
-
-    if(typeof updateSessionExerciseList === 'function') updateSessionExerciseList();
-}
+            document.getElementById('sessionModal').classList.add('active');
+        }
 
         function editSession(id) {
             editingSessionId = id;
