@@ -1174,7 +1174,7 @@
                     <button class="btn btn-secondary btn-small" onclick="calToday()">Oggi</button>
                 </div>
                 <div class="cal-nav" style="gap:6px;">
-                    <button id="btnViewWeek" class="btn btn-primary btn-small" onclick="setCalView('month')">&#128197; Mese</button>
+                    <button id="btnViewMonth" class="btn btn-primary btn-small" onclick="setCalView('month')">&#128197; Mese</button>
                     <button id="btnViewList" class="btn btn-secondary btn-small" onclick="setCalView('list')">&#128203; Lista</button>
                     <button id="btnGoogleSync" class="btn btn-secondary btn-small" onclick="googleCalendarSync()">&#128279; Google</button>
                 </div>
@@ -3669,51 +3669,48 @@ var googleConnected=false,gapiLoaded=false,gisLoaded=false,tokenClient,gcalToken
 var GCAL_CLIENT_ID='215851819161-kdk9f27tj5a0kgvg4gtqfm8onq8fhl36.apps.googleusercontent.com';
 var GCAL_SCOPES='https://www.googleapis.com/auth/calendar.events';
 
+
+
+
+
+
+
+
+
+
+// -- INIZIALIZZAZIONE GOOGLE --
 function googleCalendarSync(){
-    if(!gapiLoaded||!gisLoaded){showToast('Caricamento API Google...','info');loadGoogleAPIs(function(){googleCalendarSync();});return;}
-    if(!googleConnected){tokenClient.requestAccessToken({prompt:'consent'});}
-    else{syncAllToGoogle();}
-}
-
-
-
-
-
-
-
-function loadGoogleAPIs(cb){
-    gapiLoaded = true; // Bypass per fetch API
-    if(!document.getElementById('gis-script')){
-        var s=document.createElement('script');
-        s.id='gis-script';
-        s.src='https://accounts.google.com/gsi/client';
-        s.onload=function(){
-            tokenClient=google.accounts.oauth2.initTokenClient({
-                client_id:GCAL_CLIENT_ID,
-                scope:GCAL_SCOPES,
-                callback:function(resp){
-                    if(resp.error||!resp.access_token){
-                        showToast('Errore login Google: '+(resp.error||'nessun token'),'error');
-                        return;
-                    }
-                    gcalToken=resp.access_token;
-                    googleConnected=true;
-                    document.getElementById('btnGoogleSync').textContent='✅ Google';
-                    document.getElementById('btnGoogleSync').className='btn btn-small btn-primary';
-                    showToast('Connesso! Sincronizzazione in corso...','success');
-                    syncAllToGoogle();
+    if(typeof google === 'undefined' || !google.accounts){
+        showToast('API Google in caricamento, riprova...','info');
+        return;
+    }
+    if(!tokenClient) {
+        tokenClient = google.accounts.oauth2.initTokenClient({
+            client_id: GCAL_CLIENT_ID,
+            scope: GCAL_SCOPES,
+            callback: function(resp){
+                if(resp.error||!resp.access_token){
+                    showToast('Errore Google: '+(resp.error||'nessun token'),'error');
+                    return;
                 }
-            });
-            gisLoaded=true;
-            if(cb)cb();
-        };
-        s.onerror=function(){ showToast('Errore caricamento script Google', 'error'); }
-        document.head.appendChild(s);
+                gcalToken = resp.access_token;
+                googleConnected = true;
+                var btn = document.getElementById('btnGoogleSync');
+                if(btn) { btn.textContent = '✅ Google'; btn.className = 'btn btn-small btn-primary'; }
+                showToast('Google Connesso! Sincronizzazione...','success');
+                syncAllToGoogle();
+            }
+        });
+    }
+
+    if(!googleConnected){
+        tokenClient.requestAccessToken({prompt:'consent'});
     } else {
-        gisLoaded=true;
-        if(cb)cb();
+        syncAllToGoogle();
     }
 }
+
+
 
 function syncAllToGoogle(){
     var toSync=sessions.filter(function(s){return !s.googleEventId;});
@@ -3791,5 +3788,7 @@ function updateGoogleEvent(s){
             </div>
         </div>
     </div>
+
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
 </body>
 </html>
