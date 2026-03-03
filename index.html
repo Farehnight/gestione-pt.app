@@ -2231,46 +2231,7 @@
             updateDashboard();
         }
 
-        function renderSessions() {
-            const container = document.getElementById('sessionsList');
-            
-            if (sessions.length === 0) {
-                container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📅</div><div class="empty-state-title">Nessuna sessione</div><p>Aggiungi la prima sessione</p></div>';
-                return;
-            }
-
-            const sortedSessions = [...sessions].sort((a, b) => 
-                new Date(b.date + 'T' + b.time) - new Date(a.date + 'T' + a.time)
-            );
-
-            container.innerHTML = sortedSessions.map(s => {
-                const client = clients.find(c => c.id === s.clientId);
-                const date = new Date(s.date + 'T' + s.time);
-                const isPast = date < new Date();
-
-                return `
-                    <div class="detail-view" style="opacity: ${isPast ? '0.7' : '1'};">
-                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
-                            <div style="flex: 1;">
-                                <h3 style="margin-bottom: 6px;">${client ? client.name + ' ' + client.surname : 'Cliente eliminato'}</h3>
-                                <div style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 8px;">
-                                    ${date.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })} - ${s.time}
-                                </div>
-                                <div style="font-size: 13px;">
-                                    <span style="color: var(--color-text-secondary);">Tipo:</span> ${s.type} • 
-                                    <span style="color: var(--color-text-secondary);">Durata:</span> ${s.duration} min
-                                </div>
-                                ${s.notes ? `<div style="background: var(--color-bg-primary); padding: 10px; border-radius: 8px; margin-top: 10px; font-size: 13px;">${s.notes}</div>` : ''}
-                            </div>
-                            <div style="display: flex; gap: 8px;">
-                                <button class="btn btn-small" onclick="editSession('${s.id}')">Modifica</button>
-                                <button class="btn btn-secondary btn-small" onclick="deleteSession('${s.id}')">Elimina</button>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-        }
+        /* Vecchia renderSessions rimossa */
 
         function deleteSession(id) {
             if (!confirm('Eliminare questa sessione?')) return;
@@ -3721,6 +3682,7 @@ function googleCalendarSync(){
 
 
 function loadGoogleAPIs(cb){
+    gapiLoaded = true; // Bypass per fetch API
     if(!document.getElementById('gis-script')){
         var s=document.createElement('script');
         s.id='gis-script';
@@ -3736,7 +3698,7 @@ function loadGoogleAPIs(cb){
                     }
                     gcalToken=resp.access_token;
                     googleConnected=true;
-                    document.getElementById('btnGoogleSync').textContent='OK Google';
+                    document.getElementById('btnGoogleSync').textContent='✅ Google';
                     document.getElementById('btnGoogleSync').className='btn btn-small btn-primary';
                     showToast('Connesso! Sincronizzazione in corso...','success');
                     syncAllToGoogle();
@@ -3745,6 +3707,7 @@ function loadGoogleAPIs(cb){
             gisLoaded=true;
             if(cb)cb();
         };
+        s.onerror=function(){ showToast('Errore caricamento script Google', 'error'); }
         document.head.appendChild(s);
     } else {
         gisLoaded=true;
