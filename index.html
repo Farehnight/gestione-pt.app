@@ -2161,27 +2161,40 @@
         }
 
         function openAddSessionModal(dateStr) {
-    try {
-        editingSessionId = null;
-        document.getElementById('sessionForm').reset();
-        document.getElementById('sessionId').value = '';
-        var dur = document.getElementById('sessionDuration');
-        if(dur) dur.value = '60';
+    editingSessionId = null;
 
-        var d = new Date();
-        document.getElementById('sessionDate').value =
-            (typeof dateStr === 'string' && dateStr.length >= 10)
-                ? dateStr.slice(0,10)
-                : d.toISOString().slice(0,10);
+    // Apro il modal prima di tutto
+    document.getElementById('sessionModal').style.display = 'flex';
 
+    // Reset form
+    var form = document.getElementById('sessionForm');
+    if(form) form.reset();
+    var sid = document.getElementById('sessionId');
+    if(sid) sid.value = '';
+    var dur = document.getElementById('sessionDuration');
+    if(dur) dur.value = '60';
+
+    // Data
+    var d = new Date();
+    var dateVal = (typeof dateStr === 'string' && dateStr.length >= 10)
+        ? dateStr.slice(0,10)
+        : d.toISOString().slice(0,10);
+    var dateEl = document.getElementById('sessionDate');
+    if(dateEl) dateEl.value = dateVal;
+
+    // Ora
+    var timeEl = document.getElementById('sessionTime');
+    if(timeEl) {
         const minutes = d.getMinutes() >= 30 ? '30' : '00';
-        document.getElementById('sessionTime').value =
-            String(d.getHours()).padStart(2,'0') + ':' + minutes;
+        timeEl.value = String(d.getHours()).padStart(2,'0') + ':' + minutes;
+    }
 
-        document.getElementById('sessionModalTitle').textContent = 'Nuova Sessione';
-        if(typeof updateSessionExerciseList === 'function') updateSessionExerciseList();
-        document.getElementById('sessionModal').style.display = 'flex';
-    } catch(e) { console.error('Errore apertura modale sessione', e); }
+    // Titolo del modal (con qualunque id o classe abbia)
+    var titleEl = document.getElementById('sessionModalTitle') ||
+                  document.querySelector('#sessionModal .modal-title');
+    if(titleEl) titleEl.textContent = 'Nuova Sessione';
+
+    if(typeof updateSessionExerciseList === 'function') updateSessionExerciseList();
 }
 
         function editSession(id) {
