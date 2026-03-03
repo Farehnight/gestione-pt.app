@@ -1137,6 +1137,14 @@
                     <div class="stat-label">Sessioni Mese</div>
                     <div class="stat-value" id="monthSessionsCount">0</div>
                 </div>
+                <div class="stat-card">
+                    <div class="stat-label">Incasso Mese</div>
+                    <div class="stat-value" id="monthRevenueAmount">€0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Incasso Anno</div>
+                    <div class="stat-value" id="yearRevenueAmount">€0</div>
+                </div>
             </div>
 
             <div class="detail-view">
@@ -1413,6 +1421,31 @@
                     <div class="form-group">
                         <label class="form-label">Note Sessione</label>
                         <textarea id="sessionNotes" class="form-textarea" placeholder="Esercizi, carichi..."></textarea>
+                    </div>
+                </div>
+
+                <!-- Sezione Ricorrenza (solo per nuove sessioni) -->
+                <div id="recurSection" style="margin-top:16px;padding:14px;background:var(--color-bg-primary);border-radius:12px;border:1px solid var(--color-border);">
+                    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:600;font-size:14px;">
+                        <input type="checkbox" id="recurEnabled" onchange="toggleRecurSection()" style="width:18px;height:18px;cursor:pointer;">
+                        🔁 Ripeti questa sessione
+                    </label>
+                    <div id="recurOptions" style="display:none;margin-top:12px;display:none;">
+                        <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+                            <div class="form-group">
+                                <label class="form-label">Ogni</label>
+                                <select id="recurFreq" class="form-select">
+                                    <option value="7">Settimana</option>
+                                    <option value="14">2 Settimane</option>
+                                    <option value="30">Mese</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Per quante volte</label>
+                                <input type="number" id="recurCount" class="form-input" value="4" min="2" max="52">
+                            </div>
+                        </div>
+                        <div id="recurPreview" style="font-size:12px;color:var(--color-text-secondary);margin-top:6px;"></div>
                     </div>
                 </div>
 
@@ -1888,6 +1921,18 @@ function showToast(msg, type) {
             document.getElementById('weekSessionsCount').textContent = weekSessions;
             document.getElementById('monthSessionsCount').textContent = monthSessions;
 
+            // Incasso mensile e annuale dai pagamenti con status 'pagato'
+            const yearStart = new Date(now.getFullYear(), 0, 1);
+            const monthRevenue = payments
+                .filter(p => p.status === 'pagato' && p.date >= monthStart.toISOString().slice(0,10) && p.date <= monthEnd.toISOString().slice(0,10))
+                .reduce((sum, p) => sum + (parseFloat(p.amount)||0), 0);
+            const yearRevenue = payments
+                .filter(p => p.status === 'pagato' && p.date >= yearStart.toISOString().slice(0,10))
+                .reduce((sum, p) => sum + (parseFloat(p.amount)||0), 0);
+
+            document.getElementById('monthRevenueAmount').textContent = '€' + monthRevenue.toLocaleString('it-IT', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+            document.getElementById('yearRevenueAmount').textContent = '€' + yearRevenue.toLocaleString('it-IT', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+
             renderUpcomingSessions();
         }
 
@@ -2197,6 +2242,9 @@ function showToast(msg, type) {
             document.getElementById('sessionTime').value = 
                 String(now.getHours()).padStart(2, '0') + ':' + minutes;
 
+            document.getElementById('recurSection').style.display = '';
+            document.getElementById('recurEnabled').checked = false;
+            document.getElementById('recurOptions').style.display = 'none';
             document.getElementById('sessionModal').classList.add('active');
         }
 
@@ -2220,6 +2268,7 @@ function showToast(msg, type) {
             document.getElementById('sessionType').value = session.type;
             document.getElementById('sessionNotes').value = session.notes || '';
 
+            document.getElementById('recurSection').style.display = 'none';
             document.getElementById('sessionModal').classList.add('active');
         }
 
@@ -2250,12 +2299,26 @@ function showToast(msg, type) {
                 sessions.push(sessionData);
             }
 
-            saveData();
-            if(typeof googleConnected !== 'undefined' && googleConnected) {
-                if(editingSessionId && sessionData.googleEventId) {
-                    updateGoogleEvent(sessionData);
-                } else {
+            // Gestione sessioni ricorrenti (solo per nuove sessioni)
+            var recurEnabled = document.getElementById('recurEnabled');
+            if(!editingSessionId && recurEnabled && recurEnabled.checked) {
+                var freq = parseInt(document.getElementById('recurFreq').value) || 7;
+                var count = parseInt(document.getElementById('recurCount').value) || 4;
+                var extras = createRecurringSessions(sessionData, freq, count);
+                saveData();
+                if(typeof googleConnected !== 'undefined' && googleConnected) {
                     createGoogleEvent(sessionData);
+                    extras.forEach(function(s){ createGoogleEvent(s); });
+                }
+                showToast('Sessione + ' + (count-1) + ' ripetizioni create!', 'success');
+            } else {
+                saveData();
+                if(typeof googleConnected !== 'undefined' && googleConnected) {
+                    if(editingSessionId && sessionData.googleEventId) {
+                        updateGoogleEvent(sessionData);
+                    } else {
+                        createGoogleEvent(sessionData);
+                    }
                 }
             }
             closeSessionModal();
@@ -2277,6 +2340,74 @@ function showToast(msg, type) {
             renderSessions();
             updateDashboard();
         }
+
+
+function toggleRecurSection() {
+    var enabled = document.getElementById('recurEnabled').checked;
+    document.getElementById('recurOptions').style.display = enabled ? '' : 'none';
+    if(enabled) updateRecurPreview();
+}
+
+function updateRecurPreview() {
+    var date = document.getElementById('sessionDate').value;
+    var count = parseInt(document.getElementById('recurCount').value) || 4;
+    var freq = parseInt(document.getElementById('recurFreq').value) || 7;
+    if(!date) return;
+    var dates = [];
+    var d = new Date(date + 'T12:00:00');
+    for(var i=1; i<count; i++){
+        d = new Date(d);
+        d.setDate(d.getDate() + freq);
+        dates.push(d.toLocaleDateString('it-IT', {day:'numeric', month:'short'}));
+    }
+    document.getElementById('recurPreview').textContent = 
+        'Verrà ripetuta il: ' + dates.join(', ');
+}
+
+function createRecurringSessions(baseData, freq, count) {
+    var created = [];
+    var d = new Date(baseData.date + 'T12:00:00');
+    for(var i=1; i<count; i++){
+        d = new Date(d);
+        d.setDate(d.getDate() + freq);
+        var newSession = Object.assign({}, baseData, {
+            id: Date.now().toString() + '_' + i,
+            date: toLocalDateStr(d),
+            googleEventId: null
+        });
+        sessions.push(newSession);
+        created.push(newSession);
+    }
+    return created;
+}
+
+function duplicateSession(id) {
+    var orig = sessions.find(function(s){ return s.id === id; });
+    if(!orig) return;
+    // Calcola la data successiva alla stessa ora (domani se non specificato)
+    var nextDate = new Date(orig.date + 'T12:00:00');
+    nextDate.setDate(nextDate.getDate() + 7); // default: stessa sessione settimana prossima
+
+    editingSessionId = null;
+    document.getElementById('sessionModal').classList.add('active');
+    document.querySelector('#sessionModal .modal-title').textContent = 'Duplica Sessione';
+
+    const select = document.getElementById('sessionClient');
+    select.innerHTML = '<option value="">Seleziona cliente</option>' +
+        clients.filter(c => c.status === 'active').map(c =>
+            `<option value="${c.id}">${c.name} ${c.surname}</option>`
+        ).join('');
+
+    select.value = orig.clientId;
+    document.getElementById('sessionDate').value = toLocalDateStr(nextDate);
+    document.getElementById('sessionTime').value = orig.time;
+    document.getElementById('sessionDuration').value = orig.duration || 60;
+    document.getElementById('sessionType').value = orig.type || 'forza';
+    var notesEl = document.getElementById('sessionNotes');
+    if(notesEl) notesEl.value = orig.notes || '';
+    if(typeof updateSessionExerciseList === 'function') updateSessionExerciseList();
+}
+
 
         function deleteWorkout(id) {
             if (!confirm('Eliminare questa scheda?')) return;
@@ -3651,7 +3782,7 @@ function renderDayCell(date, isOtherMonth, today){
         var name = cl ? cl.name.split(' ')[0] : 'Cliente';
         var color = getClientColor(s.clientId);
         // stopPropagation impedisce che il click sulla pillola apra il modal "nuova sessione"
-        html += '<div class="cal-event" style="background:'+color+'" draggable="true" data-sid="'+s.id+'" title="'+name+' '+s.time+'" onclick="event.stopPropagation();editSession(\''+s.id+'\')">'+s.time+' '+name+'</div>';
+        html += '<div class="cal-event" style="background:'+color+';position:relative;" draggable="true" data-sid="'+s.id+'" title="Clicca per modificare, tieni premuto per duplicare" onclick="event.stopPropagation();editSession(\''+s.id+'\')">'+s.time+' '+name+'</div>';
     });
 
     html += '</div>';
@@ -3673,6 +3804,7 @@ function renderListView(){
             '<div style="display:flex;justify-content:space-between;align-items:center;">'+
             '<div><strong>'+(cl?cl.name:'Cliente eliminato')+'</strong> - '+s.type+'</div>'+
             '<div style="display:flex;gap:6px;">'+
+            '<button class="btn btn-secondary btn-small" data-action="dup" data-sid="'+s.id+'" title="Duplica sessione">&#128260;</button>'+
             '<button class="btn btn-secondary btn-small" data-action="edit" data-sid="'+s.id+'">&#9998;</button>'+
             '<button class="btn btn-danger btn-small" data-action="del" data-sid="'+s.id+'">&#128465;</button>'+
             '</div></div>'+
@@ -3682,6 +3814,7 @@ function renderListView(){
             '</div></div>';
     });
     container.innerHTML=items.join('');
+    container.querySelectorAll('[data-action="dup"]').forEach(function(btn){btn.addEventListener('click',function(){duplicateSession(this.dataset.sid);});});
     container.querySelectorAll('[data-action="edit"]').forEach(function(btn){btn.addEventListener('click',function(){editSession(this.dataset.sid);});});
     container.querySelectorAll('[data-action="del"]').forEach(function(btn){btn.addEventListener('click',function(){deleteSession(this.dataset.sid);});});
 }
