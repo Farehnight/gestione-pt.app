@@ -3424,14 +3424,16 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
     };
 
     var labelPlugin={id:'ptLabels',afterDatasetsDraw:function(chart){
+        var pd=chart._ptData; if(!pd) return;
         var c=chart.ctx,meta=chart.getDatasetMeta(0);
         c.save();
         meta.data.forEach(function(el,i){
-            var p=pts[i],x=el.x,y=el.y,isPR=(i===prIdx);
+            var p=pd.pts[i],x=el.x,y=el.y,isPR=(i===pd.prIdx);
+            if(!p) return;
             c.textAlign='center';
             c.font='bold 10px system-ui,sans-serif';
             c.fillStyle=isPR?'#FACC15':'rgba(226,232,240,0.95)';
-            c.fillText(p.kg+' '+unit,x,y-(isPR?20:16));
+            c.fillText(p.kg+' '+pd.unit,x,y-(isPR?20:16));
             if(p.rpe){
                 c.font='9px system-ui,sans-serif';
                 c.fillStyle='rgba(251,191,36,0.8)';
@@ -3445,6 +3447,7 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
     if(progressionChartInstance){
         progressionChartInstance.data=chartData;
         progressionChartInstance.options=chartOpts;
+        progressionChartInstance._ptData={pts:pts,prIdx:prIdx,unit:unit}; // FIX closure
         progressionChartInstance.update('none'); // 'none' = no animation
     } else {
         progressionChartInstance=new Chart(canvas.getContext('2d'),{
@@ -3453,6 +3456,7 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
             options:chartOpts,
             plugins:[labelPlugin]
         });
+        progressionChartInstance._ptData={pts:pts,prIdx:prIdx,unit:unit}; // FIX closure
     }
 
     // Statistiche
