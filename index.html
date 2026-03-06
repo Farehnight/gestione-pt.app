@@ -3365,13 +3365,37 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
     // unit e invertedAxis già calcolati sopra
     var unit=pts[pts.length-1].unit||'kg';
     var invertedAxis=(unit==='cm'); // TRX: valore minore = più difficile
-    var prIdx=0,prVal=invertedAxis?Infinity:0;
+
+    // ── 3 tipi di "best" indipendenti ──────────────────────
+    var bestKgIdx=-1, bestKgVal=invertedAxis?Infinity:0;
+    var bestVolIdx=-1, bestVolVal=0;
+    var bestRpeIdx=-1, bestRpeVal=0;
     pts.forEach(function(p,i){
-        if(invertedAxis ? p.kg<prVal : p.kg>prVal){prVal=p.kg;prIdx=i;}
+        if(invertedAxis ? p.kg<bestKgVal : p.kg>bestKgVal){ bestKgVal=p.kg; bestKgIdx=i; }
+        if((p.vol||0)>bestVolVal){ bestVolVal=p.vol; bestVolIdx=i; }
+        if((p.rpe||0)>bestRpeVal){ bestRpeVal=p.rpe; bestRpeIdx=i; }
     });
-    var pColors=kgData.map(function(_,i){return i===prIdx?'#FACC15':'rgba(99,102,241,0.9)';});
-    var pSizes=kgData.map(function(_,i){return i===prIdx?11:6;});
-    var pStyles=kgData.map(function(_,i){return i===prIdx?'star':'circle';});
+    // Se vol o rpe non esistono nei dati, non mostrare il marker
+    if(bestVolVal===0) bestVolIdx=-1;
+    if(bestRpeVal===0) bestRpeIdx=-1;
+
+    // Colori: kg=giallo ⭐, vol=verde 🔺, rpe=arancio 💎, normale=viola
+    var C_KG='#FACC15', C_VOL='#22c55e', C_RPE='#f97316', C_NORM='rgba(99,102,241,0.9)';
+    var pColors=kgData.map(function(_,i){
+        if(i===bestKgIdx) return C_KG;
+        if(i===bestVolIdx) return C_VOL;
+        if(i===bestRpeIdx) return C_RPE;
+        return C_NORM;
+    });
+    var pSizes=kgData.map(function(_,i){
+        return (i===bestKgIdx||i===bestVolIdx||i===bestRpeIdx)?12:6;
+    });
+    var pStyles=kgData.map(function(_,i){
+        if(i===bestKgIdx) return 'star';
+        if(i===bestVolIdx) return 'triangle';
+        if(i===bestRpeIdx) return 'rectRot';
+        return 'circle';
+    });
 
     // Mostra canvas, nascondi messaggio
     canvas.style.display='';
@@ -3428,16 +3452,33 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
         var c=chart.ctx,meta=chart.getDatasetMeta(0);
         c.save();
         meta.data.forEach(function(el,i){
-            var p=pd.pts[i],x=el.x,y=el.y,isPR=(i===pd.prIdx);
+            var p=pd.pts[i],x=el.x,y=el.y;
             if(!p) return;
+            var isBestKg =(i===pd.bestKgIdx);
+            var isBestVol=(i===pd.bestVolIdx);
+            var isBestRpe=(i===pd.bestRpeIdx);
+            var isSpecial=isBestKg||isBestVol||isBestRpe;
+
+            // Etichetta sopra per TUTTI i punti (valore kg, più piccolo per normali)
             c.textAlign='center';
-            c.font='bold 10px system-ui,sans-serif';
-            c.fillStyle=isPR?'#FACC15':'rgba(226,232,240,0.95)';
-            c.fillText(p.kg+' '+pd.unit,x,y-(isPR?20:16));
-            if(p.rpe){
+            if(isSpecial){
+                c.font='bold 11px system-ui,sans-serif';
+                if(isBestKg){
+                    c.fillStyle='#FACC15';
+                    c.fillText(p.kg+' '+pd.unit, x, y-22);
+                } else if(isBestVol){
+                    c.fillStyle='#22c55e';
+                    var volLabel=p.vol?'vol '+p.vol:''+p.kg+' '+pd.unit;
+                    c.fillText(volLabel, x, y-22);
+                } else if(isBestRpe){
+                    c.fillStyle='#f97316';
+                    c.fillText('RPE '+p.rpe, x, y-22);
+                }
+            } else {
+                // Punti normali: valore kg piccolo e semitrasparente
                 c.font='9px system-ui,sans-serif';
-                c.fillStyle='rgba(251,191,36,0.8)';
-                c.fillText('RPE '+p.rpe,x,y+(isPR?18:14));
+                c.fillStyle='rgba(148,163,184,0.7)';
+                c.fillText(p.kg+' '+pd.unit, x, y-12);
             }
         });
         c.restore();
@@ -3447,7 +3488,7 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
     if(progressionChartInstance){
         progressionChartInstance.data=chartData;
         progressionChartInstance.options=chartOpts;
-        progressionChartInstance._ptData={pts:pts,prIdx:prIdx,unit:unit}; // FIX closure
+        progressionChartInstance._ptData={pts:pts,bestKgIdx:bestKgIdx,bestVolIdx:bestVolIdx,bestRpeIdx:bestRpeIdx,unit:unit,invertedAxis:invertedAxis};
         progressionChartInstance.update('none'); // 'none' = no animation
     } else {
         progressionChartInstance=new Chart(canvas.getContext('2d'),{
@@ -3456,7 +3497,7 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
             options:chartOpts,
             plugins:[labelPlugin]
         });
-        progressionChartInstance._ptData={pts:pts,prIdx:prIdx,unit:unit}; // FIX closure
+        progressionChartInstance._ptData={pts:pts,bestKgIdx:bestKgIdx,bestVolIdx:bestVolIdx,bestRpeIdx:bestRpeIdx,unit:unit,invertedAxis:invertedAxis};
     }
 
     // Statistiche
