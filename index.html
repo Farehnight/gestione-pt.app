@@ -1218,7 +1218,7 @@
                         <option value="4w">Ultime 4 settimane</option>
                     </select>
                 </div>
-                <div id="sessionChartArea" style="padding:10px 0;"></div>
+                <div id="sessionChartArea" style="padding:10px 0;"><canvas id="progressionCanvas" style="width:100%;display:none;"></canvas><div id="sessionChartMsg" style="text-align:center;padding:40px 20px;color:var(--color-text-secondary);"></div></div>
                 <div id="sessionStatsArea"></div>
             </div>
 
@@ -3330,72 +3330,140 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
         }
 
         function renderSessionsChart(){
-            var clientId=(document.getElementById('progressClientSelect')||{}).value||'';
-            var exSel=document.getElementById('sessionExSelect');
-            var periodSel=document.getElementById('sessionPeriodSelect');
-            var wkSel=document.getElementById('sessionWorkoutSelect');
-            var period=periodSel?periodSel.value:'all';
-            var workoutId=wkSel?wkSel.value:'';
-            var chartArea=document.getElementById('sessionChartArea');
-            var statsArea=document.getElementById('sessionStatsArea');
-            if(!chartArea) return;
-            if(!clientId){
-                chartArea.innerHTML='<div style="text-align:center;padding:40px 20px;color:var(--color-text-secondary);">Seleziona prima un cliente.</div>';
-                if(statsArea)statsArea.innerHTML='';
-                if(progressionChartInstance){progressionChartInstance.destroy();progressionChartInstance=null;}
-                return;
+    var clientId=(document.getElementById('progressClientSelect')||{}).value||'';
+    var exSel=document.getElementById('sessionExSelect');
+    var periodSel=document.getElementById('sessionPeriodSelect');
+    var wkSel=document.getElementById('sessionWorkoutSelect');
+    var period=periodSel?periodSel.value:'all';
+    var workoutId=wkSel?wkSel.value:'';
+    var canvas=document.getElementById('progressionCanvas');
+    var msgEl=document.getElementById('sessionChartMsg');
+    var statsArea=document.getElementById('sessionStatsArea');
+
+    function showMsg(txt){
+        if(canvas) canvas.style.display='none';
+        if(msgEl) msgEl.innerHTML=txt;
+        if(statsArea) statsArea.innerHTML='';
+        if(progressionChartInstance){progressionChartInstance.destroy();progressionChartInstance=null;}
+    }
+
+    if(!canvas||!msgEl) return;
+
+    if(!clientId){ showMsg('Seleziona prima un cliente.'); return; }
+    var exName=exSel?exSel.value:'';
+    if(!exName){ showMsg('Seleziona un esercizio per vedere il grafico.'); return; }
+
+    var pts=buildProgressionData(clientId,exName,period,workoutId);
+    if(!pts.length){ showMsg('Nessuna sessione registrata per <strong>'+exName+'</strong>.'); return; }
+
+    // Dati
+    var labels=pts.map(function(p){
+        var d=new Date(p.date+'T12:00:00');
+        return d.toLocaleDateString('it-IT',{day:'numeric',month:'short'});
+    });
+    var kgData=pts.map(function(p){return p.kg;});
+    var unit=pts[pts.length-1].unit||'kg';
+    var prIdx=0,prVal=0;
+    pts.forEach(function(p,i){if(p.kg>prVal){prVal=p.kg;prIdx=i;}});
+    var pColors=kgData.map(function(_,i){return i===prIdx?'#FACC15':'rgba(99,102,241,0.9)';});
+    var pSizes=kgData.map(function(_,i){return i===prIdx?11:6;});
+    var pStyles=kgData.map(function(_,i){return i===prIdx?'star':'circle';});
+
+    // Mostra canvas, nascondi messaggio
+    canvas.style.display='';
+    if(msgEl) msgEl.innerHTML='';
+
+    var chartData={
+        labels:labels,
+        datasets:[{
+            label:'media '+unit,
+            data:kgData,
+            borderColor:'rgba(99,102,241,0.85)',
+            backgroundColor:'rgba(99,102,241,0.07)',
+            borderWidth:2.5,
+            tension:0.35,
+            fill:true,
+            pointBackgroundColor:pColors,
+            pointBorderColor:pColors,
+            pointRadius:pSizes,
+            pointHoverRadius:pSizes.map(function(s){return s+3;}),
+            pointStyle:pStyles
+        }]
+    };
+
+    var chartOpts={
+        responsive:true,
+        maintainAspectRatio:true,
+        animation:{duration:0},  // FIX: disabilita animazioni per evitare loop
+        layout:{padding:{top:38,bottom:26,left:8,right:8}},
+        plugins:{
+            legend:{display:false},
+            tooltip:{
+                backgroundColor:'rgba(10,12,20,0.95)',
+                titleColor:'#e2e8f0',
+                bodyColor:'#94a3b8',
+                borderColor:'rgba(99,102,241,0.4)',
+                borderWidth:1,
+                padding:12,
+                callbacks:{
+                    title:function(items){return labels[items[0].dataIndex];},
+                    afterTitle:function(items){var p=pts[items[0].dataIndex];return p.rpe?'RPE: '+p.rpe:'';},
+                    label:function(item){return' '+item.raw+' '+unit+' (media serie)';},
+                    afterLabel:function(item){var p=pts[item.dataIndex],lines=[];if(p.vol)lines.push(' Vol: '+p.vol+' kg\u00b7rip');if(item.dataIndex===prIdx)lines.push(' \u2B50 PERSONAL RECORD!');return lines;}
+                }
             }
-            var exName=exSel?exSel.value:'';
-            if(!exName){
-                chartArea.innerHTML='<div style="text-align:center;padding:40px 20px;color:var(--color-text-secondary);">Seleziona un esercizio per vedere il grafico.</div>';
-                if(statsArea)statsArea.innerHTML='';
-                if(progressionChartInstance){progressionChartInstance.destroy();progressionChartInstance=null;}
-                return;
-            }
-            var pts=buildProgressionData(clientId,exName,period,workoutId);
-            if(!pts.length){
-                chartArea.innerHTML='<div style="text-align:center;padding:40px 20px;color:var(--color-text-secondary);">Nessuna sessione registrata per <strong>'+exName+'</strong>.</div>';
-                if(statsArea)statsArea.innerHTML='';
-                if(progressionChartInstance){progressionChartInstance.destroy();progressionChartInstance=null;}
-                return;
-            }
-            var prIdx=0,prVal=0;
-            pts.forEach(function(p,i){if(p.kg>prVal){prVal=p.kg;prIdx=i;}});
-            chartArea.innerHTML='<canvas id="progressionCanvas" style="width:100%;"></canvas>';
-            if(progressionChartInstance){progressionChartInstance.destroy();progressionChartInstance=null;}
-            var ctx2=document.getElementById('progressionCanvas').getContext('2d');
-            var unit=pts[0].unit||'kg';
-            var labels=pts.map(function(p){return new Date(p.date).toLocaleDateString('it-IT',{day:'2-digit',month:'short'});});
-            var kgData=pts.map(function(p){return p.kg;});
-            var PR_COLOR='#FACC15',NORM_COLOR='rgba(99,102,241,1)';
-            var pColors=kgData.map(function(_,i){return i===prIdx?PR_COLOR:NORM_COLOR;});
-            var pSizes=kgData.map(function(_,i){return i===prIdx?11:6;});
-            var pStyles=kgData.map(function(_,i){return i===prIdx?'star':'circle';});
-            progressionChartInstance=new Chart(ctx2,{
-                type:'line',
-                data:{labels:labels,datasets:[{label:'media '+unit,data:kgData,borderColor:'rgba(99,102,241,0.85)',backgroundColor:'rgba(99,102,241,0.07)',borderWidth:2.5,tension:0.35,fill:true,pointBackgroundColor:pColors,pointBorderColor:pColors,pointRadius:pSizes,pointHoverRadius:pSizes.map(function(s){return s+3;}),pointStyle:pStyles}]},
-                options:{responsive:true,maintainAspectRatio:true,layout:{padding:{top:38,bottom:26,left:8,right:8}},plugins:{legend:{display:false},tooltip:{backgroundColor:'rgba(10,12,20,0.95)',titleColor:'#e2e8f0',bodyColor:'#94a3b8',borderColor:'rgba(99,102,241,0.4)',borderWidth:1,padding:12,callbacks:{title:function(items){return labels[items[0].dataIndex];},afterTitle:function(items){var p=pts[items[0].dataIndex];return p.rpe?'RPE: '+p.rpe:'';},label:function(item){return' '+item.raw+' '+unit+' (media serie)';},afterLabel:function(item){var p=pts[item.dataIndex],lines=[];if(p.vol)lines.push(' Vol: '+p.vol+' kg\u00b7rip');if(item.dataIndex===prIdx)lines.push(' \u2B50 PERSONAL RECORD!');return lines;}}}},scales:{x:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#64748b',font:{size:11},maxRotation:40}},y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#64748b',font:{size:11},callback:function(v){return v+' '+unit;}},beginAtZero:false}}},
-                plugins:[{id:'ptLabels',afterDatasetsDraw:function(chart){
-                    var c=chart.ctx,meta=chart.getDatasetMeta(0);
-                    c.save();
-                    meta.data.forEach(function(el,i){
-                        var p=pts[i],x=el.x,y=el.y,isPR=(i===prIdx);
-                        c.textAlign='center';
-                        c.font='bold 10px system-ui,sans-serif';
-                        c.fillStyle=isPR?'#FACC15':'rgba(226,232,240,0.95)';
-                        c.fillText(p.kg+' '+unit,x,y-(isPR?20:16));
-                        if(p.rpe){c.font='9px system-ui,sans-serif';c.fillStyle='rgba(251,191,36,0.9)';c.fillText('RPE '+p.rpe,x,y-(isPR?33:29));}
-                        if(p.vol){c.font='9px system-ui,sans-serif';c.fillStyle='rgba(148,163,184,0.8)';c.fillText(p.vol+' kg\u00b7rip',x,y+20);}
-                    });
-                    c.restore();
-                }}]
-            });
-            if(statsArea){
-                var lastPt=pts[pts.length-1],prevPt=pts.length>1?pts[pts.length-2]:null,trendHtml='';
-                if(prevPt){var diff=Math.round((lastPt.kg-prevPt.kg)*10)/10,arrow=diff>0?'\u2191':diff<0?'\u2193':'\u2192',col=diff>0?'var(--color-success)':diff<0?'var(--color-error)':'var(--color-text-secondary)';trendHtml='<div class="prog-stat"><div class="prog-stat-val" style="color:'+col+';">'+arrow+' '+(diff>0?'+':'')+diff+' '+unit+'</div><div class="prog-stat-lbl">Trend (ultima vs prec.)</div></div>';}
-                statsArea.innerHTML='<div class="prog-stats-row"><div class="prog-stat"><div class="prog-stat-val" style="color:#FACC15;">\u2B50 '+prVal+' '+unit+'</div><div class="prog-stat-lbl">Personal Record</div></div>'+trendHtml+'<div class="prog-stat"><div class="prog-stat-val">'+pts.length+'</div><div class="prog-stat-lbl">Sessioni registrate</div></div></div>';
-            }
+        },
+        scales:{
+            x:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'#64748b',font:{size:11},maxRotation:40}},
+            y:{grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#64748b',font:{size:11},callback:function(v){return v+' '+unit;}},beginAtZero:false}
         }
+    };
+
+    var labelPlugin={id:'ptLabels',afterDatasetsDraw:function(chart){
+        var c=chart.ctx,meta=chart.getDatasetMeta(0);
+        c.save();
+        meta.data.forEach(function(el,i){
+            var p=pts[i],x=el.x,y=el.y,isPR=(i===prIdx);
+            c.textAlign='center';
+            c.font='bold 10px system-ui,sans-serif';
+            c.fillStyle=isPR?'#FACC15':'rgba(226,232,240,0.95)';
+            c.fillText(p.kg+' '+unit,x,y-(isPR?20:16));
+            if(p.rpe){
+                c.font='9px system-ui,sans-serif';
+                c.fillStyle='rgba(251,191,36,0.8)';
+                c.fillText('RPE '+p.rpe,x,y+(isPR?18:14));
+            }
+        });
+        c.restore();
+    }};
+
+    // FIX PRINCIPALE: aggiorna il chart esistente invece di distruggerlo/ricrearlo
+    if(progressionChartInstance){
+        progressionChartInstance.data=chartData;
+        progressionChartInstance.options=chartOpts;
+        progressionChartInstance.update('none'); // 'none' = no animation
+    } else {
+        progressionChartInstance=new Chart(canvas.getContext('2d'),{
+            type:'line',
+            data:chartData,
+            options:chartOpts,
+            plugins:[labelPlugin]
+        });
+    }
+
+    // Statistiche
+    if(statsArea){
+        var first=pts[0],last=pts[pts.length-1];
+        var delta=Math.round((last.kg-first.kg)*10)/10;
+        var deltaSign=delta>0?'+':'';
+        statsArea.innerHTML='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;">'+
+            '<div class="stat-card" style="flex:1;min-width:100px;padding:12px;text-align:center;"><div class="stat-label">Primo</div><div class="stat-value" style="font-size:1.1rem;">'+first.kg+' '+unit+'</div></div>'+
+            '<div class="stat-card" style="flex:1;min-width:100px;padding:12px;text-align:center;"><div class="stat-label">Ultimo</div><div class="stat-value" style="font-size:1.1rem;">'+last.kg+' '+unit+'</div></div>'+
+            '<div class="stat-card" style="flex:1;min-width:100px;padding:12px;text-align:center;"><div class="stat-label">Record</div><div class="stat-value" style="font-size:1.1rem;">'+prVal+' '+unit+'</div></div>'+
+            '<div class="stat-card" style="flex:1;min-width:100px;padding:12px;text-align:center;"><div class="stat-label">Progresso</div><div class="stat-value" style="font-size:1.1rem;color:'+(delta>=0?'#22c55e':'#ef4444')+';">'+deltaSign+delta+' '+unit+'</div></div>'+
+        '</div>';
+    }
+}
 
          
 
