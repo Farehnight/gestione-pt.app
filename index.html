@@ -3437,7 +3437,7 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
                     title:function(items){return labels[items[0].dataIndex];},
                     afterTitle:function(items){var p=pts[items[0].dataIndex];return p.rpe?'RPE: '+p.rpe:'';},
                     label:function(item){return' '+item.raw+' '+unit+' (media serie)';},
-                    afterLabel:function(item){var p=pts[item.dataIndex],lines=[];if(p.vol)lines.push(' Vol: '+p.vol+' kg\u00b7rip');if(item.dataIndex===prIdx)lines.push(' \u2B50 PERSONAL RECORD!');return lines;}
+                    afterLabel:function(item){var idx=item.dataIndex,p=pts[idx],lines=[];if(!p)return lines;if(p.vol)lines.push(' Vol: '+p.vol+' kg·rip');if(idx===bestKgIdx)lines.push(' \u2B50 Miglior Carico!');if(idx===bestVolIdx)lines.push(' \u25B2 Miglior Volume!');if(idx===bestRpeIdx)lines.push(' \u2666 Miglior Intensit\u00e0!');return lines;}
                 }
             }
         },
@@ -3508,8 +3508,10 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
         statsArea.innerHTML='<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;">'+
             '<div class="stat-card" style="flex:1;min-width:100px;padding:12px;text-align:center;"><div class="stat-label">Primo</div><div class="stat-value" style="font-size:1.1rem;">'+first.kg+' '+unit+'</div></div>'+
             '<div class="stat-card" style="flex:1;min-width:100px;padding:12px;text-align:center;"><div class="stat-label">Ultimo</div><div class="stat-value" style="font-size:1.1rem;">'+last.kg+' '+unit+'</div></div>'+
-            '<div class="stat-card" style="flex:1;min-width:100px;padding:12px;text-align:center;"><div class="stat-label">'+(invertedAxis?'Best (min)':'Record')+'</div><div class="stat-value" style="font-size:1.1rem;">'+prVal+' '+unit+'</div></div>'+
             '<div class="stat-card" style="flex:1;min-width:100px;padding:12px;text-align:center;"><div class="stat-label">Progresso</div><div class="stat-value" style="font-size:1.1rem;color:'+(delta>=0?'#22c55e':'#ef4444')+';">'+deltaSign+delta+' '+unit+'</div></div>'+
+            '<div class="stat-card" style="flex:1;min-width:100px;padding:12px;text-align:center;"><div class="stat-label">⭐ Carico</div><div class="stat-value" style="font-size:1.1rem;color:#FACC15;">'+bestKgVal+' '+unit+'</div></div>'+
+            (bestVolIdx!==-1?'<div class="stat-card" style="flex:1;min-width:100px;padding:12px;text-align:center;"><div class="stat-label">🔺 Volume</div><div class="stat-value" style="font-size:1.1rem;color:#22c55e;">'+bestVolVal+' kg·rip</div></div>':'')+
+            (bestRpeIdx!==-1?'<div class="stat-card" style="flex:1;min-width:100px;padding:12px;text-align:center;"><div class="stat-label">💎 RPE Max</div><div class="stat-value" style="font-size:1.1rem;color:#f97316;">'+bestRpeVal+'</div></div>':'')+
         '</div>';
     }
 }
