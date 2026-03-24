@@ -1,0 +1,48 @@
+{
+  "name": "Gestione Clienti PT",
+  "short_name": "PT Manager",
+  "description": "Sistema completo per personal trainer — sessioni, progressi, pagamenti",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0f1117",
+  "theme_color": "#6366f1",
+  "orientation": "portrait-primary",
+  "categories": [
+    "health",
+    "fitness",
+    "productivity"
+  ],
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Nuova Sessione",
+      "short_name": "Sessione",
+      "url": "./#sessioni",
+      "description": "Aggiungi una nuova sessione"
+    },
+    {
+      "name": "Pagamenti",
+      "short_name": "Pagamenti",
+      "url": "./#pagamenti",
+      "description": "Gestisci i pagamenti"
+    }
+  ]
+}
