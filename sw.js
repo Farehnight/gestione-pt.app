@@ -1,4 +1,4 @@
-const CACHE = 'pt-manager-v2';
+const CACHE = 'pt-manager-v3';
 const PRECACHE = ['./'];
 
 self.addEventListener('install', e => {

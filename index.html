@@ -1814,14 +1814,10 @@
 
         function initTheme() {
             const savedTheme = localStorage.getItem('ptTheme');
-            if (savedTheme) {
-                document.documentElement.setAttribute('data-theme', savedTheme);
-            } else {
-                const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-                if (prefersDark) {
-                    document.documentElement.setAttribute('data-theme', 'dark');
-                }
-            }
+            // Default: dark. Se l'utente ha scelto esplicitamente un tema, rispetta la sua scelta
+            const theme = savedTheme || 'dark';
+            document.documentElement.setAttribute('data-theme', theme);
+            if (!savedTheme) localStorage.setItem('ptTheme', 'dark');
         }
 
         function toggleTheme() {
