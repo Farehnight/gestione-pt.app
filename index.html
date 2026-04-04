@@ -3492,7 +3492,7 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
         }
 
         
-            setTimeout(function(){ wbInit(''); }, 30); function openAddPaymentModal() {
+        function openAddPaymentModal() {
             document.getElementById('paymentForm').reset();
             document.getElementById('paymentDate').value = toLocalDateStr();
             document.getElementById('paymentStatus').value = 'pagato';
