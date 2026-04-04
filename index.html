@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Gestione Clienti PT</title>
+    <!-- Dark mode immediato — prima del CSS per evitare flash -->
+    <script>document.documentElement.setAttribute('data-theme',localStorage.getItem('ptDarkMode')||'dark');</script>
     <!-- PWA -->
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#6366f1">
@@ -1813,11 +1815,9 @@
         let workoutLogs = [];
 
         function initTheme() {
-            const savedTheme = localStorage.getItem('ptTheme');
-            // Default: dark. Se l'utente ha scelto esplicitamente un tema, rispetta la sua scelta
-            const theme = savedTheme || 'dark';
-            document.documentElement.setAttribute('data-theme', theme);
-            if (!savedTheme) localStorage.setItem('ptTheme', 'dark');
+            // Dark/light mode usa ptDarkMode (separato dai colori custom in ptTheme)
+            const darkMode = localStorage.getItem('ptDarkMode') || 'dark';
+            document.documentElement.setAttribute('data-theme', darkMode);
         }
 
         function toggleTheme() {
@@ -1874,9 +1874,15 @@ function showToast(msg, type) {
                 localStorage.setItem('ptPayments', JSON.stringify(payments));
                 localStorage.setItem('ptTests', JSON.stringify(tests));
                 localStorage.setItem('ptWorkoutLogs', JSON.stringify(workoutLogs));
+                localStorage.setItem('ptLastSave', new Date().toISOString());
+                // Sincronizza su Firebase con debounce (max 1 scrittura ogni 2s)
+                if (_fbSyncTimeout) clearTimeout(_fbSyncTimeout);
+                _fbSyncTimeout = setTimeout(function() {
+                    fbSaveData();
+                }, 2000);
             } catch (e) {
                 console.error('Errore salvataggio:', e);
-                alert('Errore nel salvataggio');
+                showToast('Errore nel salvataggio locale ⚠️', 'error');
             }
         }
 
