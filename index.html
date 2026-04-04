@@ -50,6 +50,13 @@
         }
         .wb-row-top .wb-name::placeholder { color:var(--color-text-secondary); font-weight:400; }
         .wb-row-params { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+        .wb-row-params.collapsed { display:none; }
+        .wb-expand-btn {
+            font-size:11px; color:var(--color-text-secondary); cursor:pointer;
+            background:none; border:none; padding:1px 4px; border-radius:4px;
+            transition:color .15s;
+        }
+        .wb-expand-btn:hover { color:var(--color-primary); }
         .wb-param-group { display:flex; align-items:center; gap:3px; }
         .wb-param-group span { font-size:12px; color:var(--color-text-secondary); }
         .wb-input {
@@ -3137,14 +3144,18 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
                         '<button type="button" class="wb-btn del" onclick="wbDel('+idx+')" title="Elimina">×</button>' +
                         '</div>';
                 }
+                var hasParams = r.sets||r.reps||r.kg||r.rest;
+                var paramsClass = hasParams ? 'wb-row-params' : 'wb-row-params collapsed';
+                var expandLabel = hasParams ? '▲ meno' : '＋ serie/kg';
                 return '<div class="wb-row" data-widx="'+idx+'">' +
                     '<div class="wb-row-top">' +
                     '  <input class="wb-name" value="'+_esc(r.name)+'" placeholder="Nome esercizio...">' +
+                    '  <button type="button" class="wb-expand-btn" onclick="wbToggleParams(this)" title="Serie/reps/kg/rec">'+expandLabel+'</button>' +
                     '  <button type="button" class="wb-btn" onclick="wbMove('+idx+',-1)" title="Su">↑</button>' +
                     '  <button type="button" class="wb-btn" onclick="wbMove('+idx+',1)" title="Giù">↓</button>' +
                     '  <button type="button" class="wb-btn del" onclick="wbDel('+idx+')" title="Elimina">×</button>' +
                     '</div>' +
-                    '<div class="wb-row-params">' +
+                    '<div class="'+paramsClass+'">' +
                     '  <div class="wb-param-group"><input class="wb-input sets" value="'+_esc(r.sets)+'" placeholder="Ser" inputmode="numeric"><span>×</span></div>' +
                     '  <div class="wb-param-group"><input class="wb-input reps" value="'+_esc(r.reps)+'" placeholder="Reps"><span>@</span></div>' +
                     '  <div class="wb-param-group"><input class="wb-input kg" value="'+_esc(r.kg)+'" placeholder="kg" inputmode="decimal"><span style="color:var(--color-text-secondary);font-size:11px;">⏱</span></div>' +
@@ -3189,6 +3200,14 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
             if (target < 0 || target >= wbRows.length) return;
             var tmp = wbRows[idx]; wbRows[idx] = wbRows[target]; wbRows[target] = tmp;
             wbRender();
+        }
+
+        function wbToggleParams(btn) {
+            var row = btn.closest('.wb-row');
+            var params = row.querySelector('.wb-row-params');
+            if (!params) return;
+            var collapsed = params.classList.toggle('collapsed');
+            btn.textContent = collapsed ? '＋ serie/kg' : '▲ meno';
         }
 
         function saveWorkout(e) {
