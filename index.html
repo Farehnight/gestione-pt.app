@@ -3322,11 +3322,14 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
                 .replace(/\s*rec\.?.*$/i,'')
                 .replace(/\s*@\d.*$/,'')
                 .replace(/[^a-z\u00e0-\u00fc\s]/g,'')
+                .replace(/\s+/g,' ')
                 .trim();};
             var cName=clean(exName);
+            // Match SOLO per uguaglianza esatta dopo clean — evita che
+            // "panca piana" matchi "panca piana multipower" o "croci su panca piana"
             return exercises.find(function(e){
                 var cLog=clean(e.name);
-                return cLog===cName||cLog.includes(cName)||cName.includes(cLog);
+                return cLog===cName;
             });
         }
 
