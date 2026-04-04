@@ -34,6 +34,68 @@
             --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
         }
 
+
+        /* ── Workout Builder ── */
+        .wb-wrap { display:flex; flex-direction:column; gap:6px; }
+        .wb-row {
+            display:flex; flex-direction:column; gap:4px;
+            background:var(--color-bg-secondary); border:1px solid var(--color-border);
+            border-radius:10px; padding:8px 10px; position:relative;
+        }
+        .wb-row-top { display:flex; align-items:center; gap:6px; }
+        .wb-row-top .wb-name {
+            flex:1; background:transparent; border:none; outline:none;
+            font-size:14px; font-weight:600; color:var(--color-text-primary);
+            padding:2px 0;
+        }
+        .wb-row-top .wb-name::placeholder { color:var(--color-text-secondary); font-weight:400; }
+        .wb-row-params { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+        .wb-param-group { display:flex; align-items:center; gap:3px; }
+        .wb-param-group span { font-size:12px; color:var(--color-text-secondary); }
+        .wb-input {
+            background:var(--color-bg-primary); border:1px solid var(--color-border);
+            border-radius:6px; padding:3px 6px; font-size:13px;
+            color:var(--color-text-primary); outline:none; min-width:0;
+        }
+        .wb-input:focus { border-color:var(--color-primary); }
+        .wb-input.sets { width:36px; text-align:center; }
+        .wb-input.reps { width:44px; text-align:center; }
+        .wb-input.kg   { width:52px; text-align:center; }
+        .wb-input.rest { width:48px; text-align:center; }
+        .wb-row-actions { display:flex; gap:4px; }
+        .wb-btn {
+            background:none; border:none; cursor:pointer; padding:2px 5px;
+            border-radius:5px; font-size:14px; color:var(--color-text-secondary);
+            transition:background .15s, color .15s;
+        }
+        .wb-btn:hover { background:var(--color-border); color:var(--color-text-primary); }
+        .wb-btn.del:hover { background:var(--color-error); color:#fff; }
+        /* Sezione */
+        .wb-section {
+            display:flex; align-items:center; gap:8px;
+            background:var(--color-primary); border-radius:8px; padding:5px 10px;
+        }
+        .wb-section-name {
+            flex:1; background:transparent; border:none; outline:none;
+            font-size:12px; font-weight:700; text-transform:uppercase;
+            letter-spacing:.06em; color:#fff;
+        }
+        .wb-section-name::placeholder { color:rgba(255,255,255,.6); }
+        .wb-section .wb-btn { color:rgba(255,255,255,.8); }
+        .wb-section .wb-btn:hover { background:rgba(255,255,255,.2); color:#fff; }
+        /* Add buttons */
+        .wb-add-row { display:flex; gap:8px; margin-top:4px; }
+        .wb-add-btn {
+            flex:1; background:none;
+            border:1.5px dashed var(--color-border); border-radius:8px;
+            padding:7px; font-size:13px; color:var(--color-text-secondary);
+            cursor:pointer; transition:border-color .15s, color .15s;
+        }
+        .wb-add-btn:hover { border-color:var(--color-primary); color:var(--color-primary); }
+        /* Toggle raw */
+        .wb-toggle { font-size:11px; color:var(--color-text-secondary); cursor:pointer;
+            text-align:right; margin-bottom:4px; text-decoration:underline; }
+
         [data-theme="dark"] {
             --color-bg-primary: #0f172a;
             --color-bg-secondary: #1e293b;
@@ -1588,8 +1650,23 @@
                         <input type="number" id="workoutDuration" class="form-input" value="60">
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Esercizi *</label>
-                        <textarea id="workoutExercises" class="form-textarea" required placeholder="Uno per riga&#10;es: Squat - 4x6 @ 80kg" style="min-height: 120px;"></textarea>
+                        <label class="form-label" style="display:flex;justify-content:space-between;align-items:center;">
+                            <span>Esercizi</span>
+                            <span class="wb-toggle" onclick="wbToggleRaw()" id="wbToggleBtn">✏️ Testo libero</span>
+                        </label>
+                        <!-- Builder visuale -->
+                        <div id="wbBuilderWrap">
+                            <div class="wb-wrap" id="wbRows"></div>
+                            <div class="wb-add-row">
+                                <button type="button" class="wb-add-btn" onclick="wbAddExercise()">＋ Esercizio</button>
+                                <button type="button" class="wb-add-btn" onclick="wbAddSection()">＋ Sezione</button>
+                            </div>
+                        </div>
+                        <!-- Textarea raw (nascosta di default) -->
+                        <textarea id="workoutExercises" class="form-textarea"
+                            placeholder="Uno per riga&#10;es: Squat - 4x6 @ 80kg"
+                            style="min-height:120px;display:none;"
+                            oninput="wbSyncFromRaw()"></textarea>
                     </div>
                     <div class="form-group">
                         <label class="form-label">Note Tecniche</label>
@@ -2918,6 +2995,7 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
                 ).join('');
 
             document.getElementById('workoutModal').classList.add('active');
+            setTimeout(function(){ wbInit(workout.exercises||''); }, 30);
         }
 
         function closeWorkoutModal() {
@@ -2925,8 +3003,198 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
             editingWorkoutId = null;
         }
 
+
+        // ══════════════════════════════════════════
+        // WORKOUT BUILDER
+        // ══════════════════════════════════════════
+        var wbRows = [];
+        var wbRawMode = false;
+
+        function wbToggleRaw() {
+            wbRawMode = !wbRawMode;
+            var ta = document.getElementById('workoutExercises');
+            var wrap = document.getElementById('wbBuilderWrap');
+            var btn = document.getElementById('wbToggleBtn');
+            if (wbRawMode) {
+                wbSyncToTextarea();
+                ta.style.display = '';
+                wrap.style.display = 'none';
+                btn.textContent = '🧱 Builder visuale';
+            } else {
+                wbInit(ta.value);
+                ta.style.display = 'none';
+                wrap.style.display = '';
+                btn.textContent = '✏️ Testo libero';
+            }
+        }
+
+        // Sincronizza textarea → builder
+        function wbSyncFromRaw() {
+            if (!wbRawMode) return;
+        }
+
+        // Sincronizza builder → textarea (prima del save)
+        function wbSyncToTextarea() {
+            var ta = document.getElementById('workoutExercises');
+            if (ta) ta.value = wbSerialize();
+        }
+
+        // Inizializza il builder dal testo esistente
+        function wbInit(text) {
+            wbRows = wbParseText(text || '');
+            if (wbRows.length === 0) {
+                wbRows = [
+                    {type:'section', name:'A'},
+                    {type:'exercise', name:'', sets:'', reps:'', kg:'', rest:''}
+                ];
+            }
+            wbRender();
+            wbRawMode = false;
+            var ta = document.getElementById('workoutExercises');
+            var wrap = document.getElementById('wbBuilderWrap');
+            var btn = document.getElementById('wbToggleBtn');
+            if(ta) ta.style.display = 'none';
+            if(wrap) wrap.style.display = '';
+            if(btn) btn.textContent = '✏️ Testo libero';
+        }
+
+        // Parser: testo → wbRows[]
+        function wbParseText(text) {
+            var rows = [];
+            var lines = (text || '').split('\n');
+            lines.forEach(function(line) {
+                var t = line.trim();
+                if (!t) return;
+                if (isSectionLine(t)) {
+                    rows.push({type:'section', name: t.replace(/:+\s*$/, '').trim()});
+                    return;
+                }
+                var ex = {type:'exercise', name:t, sets:'', reps:'', kg:'', rest:''};
+                // Estrai rec.
+                var rm = t.match(/\s*rec\.?\s*([\d'\"hms]+)/i);
+                if (rm) { ex.rest = rm[1]; t = t.replace(/\s*rec\.?\s*[\d'\"hms]+/i,'').trim(); }
+                // Estrai @kg
+                var km = t.match(/@\s*([\d.]+)\s*kg?/i);
+                if (km) { ex.kg = km[1]; t = t.replace(/@\s*[\d.]+\s*kg?/i,'').trim(); }
+                // Estrai SxR
+                var sm = t.match(/[-–]\s*(\d+)\s*[xX×]\s*([\d\-+]+)/);
+                if (sm) {
+                    ex.sets = sm[1]; ex.reps = sm[2];
+                    t = t.replace(/\s*[-–]\s*\d+\s*[xX×]\s*[\d\-+]+/,'').trim();
+                }
+                // Pulisci trattino finale
+                ex.name = t.replace(/\s*[-–]\s*$/, '').trim();
+                rows.push(ex);
+            });
+            return rows;
+        }
+
+        // Serializer: wbRows[] → testo
+        function wbSerialize() {
+            return wbRows.map(function(r) {
+                if (r.type === 'section') return (r.name||'A').toUpperCase() + ':';
+                var line = (r.name||'').trim();
+                if (!line) return '';
+                if (r.sets && r.reps) line += ' - ' + r.sets + 'x' + r.reps;
+                if (r.kg) line += ' @ ' + r.kg + 'kg';
+                if (r.rest) line += ' rec. ' + r.rest;
+                return line;
+            }).filter(function(l){ return l !== ''; }).join('\n');
+        }
+
+        // Legge valori attuali dagli input DOM prima di operare sulle righe
+        function wbSyncFromDOM() {
+            var container = document.getElementById('wbRows');
+            if (!container) return;
+            container.querySelectorAll('[data-widx]').forEach(function(el) {
+                var idx = parseInt(el.dataset.widx);
+                if (idx < 0 || idx >= wbRows.length) return;
+                var r = wbRows[idx];
+                if (r.type === 'section') {
+                    var ni = el.querySelector('.wb-section-name');
+                    if (ni) r.name = ni.value;
+                } else {
+                    var nm = el.querySelector('.wb-name'); if(nm) r.name = nm.value;
+                    var st = el.querySelector('.wb-input.sets'); if(st) r.sets = st.value;
+                    var rp = el.querySelector('.wb-input.reps'); if(rp) r.reps = rp.value;
+                    var kg = el.querySelector('.wb-input.kg');   if(kg) r.kg   = kg.value;
+                    var rs = el.querySelector('.wb-input.rest'); if(rs) r.rest = rs.value;
+                }
+            });
+        }
+
+        // Render
+        function wbRender() {
+            var container = document.getElementById('wbRows');
+            if (!container) return;
+            container.innerHTML = wbRows.map(function(r, idx) {
+                if (r.type === 'section') {
+                    return '<div class="wb-section" data-widx="'+idx+'">' +
+                        '<span style="font-size:11px;color:rgba(255,255,255,.7);margin-right:4px;">§</span>' +
+                        '<input class="wb-section-name" value="'+_esc(r.name)+'" placeholder="Nome sezione (es. A, RISCALDAMENTO)">' +
+                        '<button type="button" class="wb-btn" onclick="wbMove('+idx+',-1)" title="Su">↑</button>' +
+                        '<button type="button" class="wb-btn" onclick="wbMove('+idx+',1)" title="Giù">↓</button>' +
+                        '<button type="button" class="wb-btn del" onclick="wbDel('+idx+')" title="Elimina">×</button>' +
+                        '</div>';
+                }
+                return '<div class="wb-row" data-widx="'+idx+'">' +
+                    '<div class="wb-row-top">' +
+                    '  <input class="wb-name" value="'+_esc(r.name)+'" placeholder="Nome esercizio...">' +
+                    '  <button type="button" class="wb-btn" onclick="wbMove('+idx+',-1)" title="Su">↑</button>' +
+                    '  <button type="button" class="wb-btn" onclick="wbMove('+idx+',1)" title="Giù">↓</button>' +
+                    '  <button type="button" class="wb-btn del" onclick="wbDel('+idx+')" title="Elimina">×</button>' +
+                    '</div>' +
+                    '<div class="wb-row-params">' +
+                    '  <div class="wb-param-group"><input class="wb-input sets" value="'+_esc(r.sets)+'" placeholder="Ser" inputmode="numeric"><span>×</span></div>' +
+                    '  <div class="wb-param-group"><input class="wb-input reps" value="'+_esc(r.reps)+'" placeholder="Reps"><span>@</span></div>' +
+                    '  <div class="wb-param-group"><input class="wb-input kg" value="'+_esc(r.kg)+'" placeholder="kg" inputmode="decimal"><span style="color:var(--color-text-secondary);font-size:11px;">⏱</span></div>' +
+                    '  <div class="wb-param-group"><input class="wb-input rest" value="'+_esc(r.rest)+'" placeholder="rec."></div>' +
+                    '</div>' +
+                    '</div>';
+            }).join('');
+        }
+
+        function _esc(v) { return (v||'').toString().replace(/"/g,'&quot;'); }
+
+        function wbAddExercise() {
+            wbSyncFromDOM();
+            wbRows.push({type:'exercise', name:'', sets:'', reps:'', kg:'', rest:''});
+            wbRender();
+            // Focus sul nome dell'ultimo esercizio aggiunto
+            setTimeout(function(){
+                var inputs = document.querySelectorAll('#wbRows .wb-name');
+                if(inputs.length) inputs[inputs.length-1].focus();
+            }, 50);
+        }
+
+        function wbAddSection() {
+            wbSyncFromDOM();
+            wbRows.push({type:'section', name:''});
+            wbRender();
+            setTimeout(function(){
+                var inputs = document.querySelectorAll('#wbRows .wb-section-name');
+                if(inputs.length) inputs[inputs.length-1].focus();
+            }, 50);
+        }
+
+        function wbDel(idx) {
+            wbSyncFromDOM();
+            wbRows.splice(idx, 1);
+            wbRender();
+        }
+
+        function wbMove(idx, dir) {
+            wbSyncFromDOM();
+            var target = idx + dir;
+            if (target < 0 || target >= wbRows.length) return;
+            var tmp = wbRows[idx]; wbRows[idx] = wbRows[target]; wbRows[target] = tmp;
+            wbRender();
+        }
+
         function saveWorkout(e) {
             e.preventDefault();
+            // Sincronizza builder → textarea
+            if (!wbRawMode) { wbSyncFromDOM(); wbSyncToTextarea(); }
 
             const workoutData = {
                 id: editingWorkoutId || Date.now().toString(),
@@ -3014,7 +3282,8 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
             document.getElementById('workoutModal').classList.add('active');
         }
 
-        function openAddPaymentModal() {
+        
+            setTimeout(function(){ wbInit(''); }, 30); function openAddPaymentModal() {
             document.getElementById('paymentForm').reset();
             document.getElementById('paymentDate').value = toLocalDateStr();
             document.getElementById('paymentStatus').value = 'pagato';
