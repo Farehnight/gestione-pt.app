@@ -992,6 +992,8 @@
         .cal-event { border-radius:6px; padding:4px 7px; font-size:11.5px; font-weight:600; color:#fff; cursor:grab; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; box-shadow:0 1px 4px rgba(0,0,0,.18); transition:transform .12s, box-shadow .12s; line-height:1.4; }
         .cal-event:hover { transform:translateY(-1px) scale(1.02); box-shadow:0 3px 8px rgba(0,0,0,.28); z-index:2; position:relative; }
         .cal-event.dragging { opacity:.45; transform:scale(.97); }
+        @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        #syncIndicator { cursor:default; font-size:1rem; transition:opacity .3s; user-select:none; }
 
         @media(max-width:600px){
             .cal-toolbar { flex-direction:column; align-items:stretch; }
@@ -1009,7 +1011,7 @@
     <script type="module">
       import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
       import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-      import { getFirestore, doc, setDoc, getDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+      import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
       const firebaseConfig = {
         apiKey: "AIzaSyD0vdk90B93xw8j7GY1b0vqhETEjLcgSaY",
@@ -1036,6 +1038,7 @@
       window._fbDoc = doc;
       window._fbSetDoc = setDoc;
       window._fbGetDoc = getDoc;
+      window._fbOnSnapshot = onSnapshot;
       window._fbCollection = collection;
       window._fbGetDocs = getDocs;
 
@@ -1093,6 +1096,7 @@
                     <button class="btn btn-secondary btn-small" onclick="toggleTheme()" style="white-space: nowrap; padding: 8px 10px;" title="Cambia tema">🌓</button>
                     <button id="themeBtn" onclick="toggleThemePanel()" title="Personalizza colori" class="btn btn-secondary btn-small" style="white-space:nowrap;padding:8px 10px;">🎨</button>
                     <button class="btn btn-secondary btn-small" onclick="openDataModal()" style="white-space: nowrap;">⚙️ Dati</button>
+                    <span id="syncIndicator" title="Dati sincronizzati" onclick="forcSync()" style="font-size:1rem;cursor:pointer;opacity:0.7;margin-left:2px;">☁️</span>
                 </div>
             </div>
         <div id="authBadge" onclick="fbSignOutUser()" title="Clicca per uscire">
@@ -1864,6 +1868,29 @@ function showToast(msg, type) {
     c.appendChild(el);
     setTimeout(function(){ el.style.opacity='0'; setTimeout(function(){ el.remove(); }, 400); }, 3000);
 }
+
+        function saveLocalOnly() {
+            try {
+                localStorage.setItem('ptClients',      JSON.stringify(clients));
+                localStorage.setItem('ptSessions',     JSON.stringify(sessions));
+                localStorage.setItem('ptMeasurements', JSON.stringify(measurements));
+                localStorage.setItem('ptWorkouts',     JSON.stringify(workouts));
+                localStorage.setItem('ptPayments',     JSON.stringify(payments));
+                localStorage.setItem('ptTests',        JSON.stringify(tests));
+                localStorage.setItem('ptWorkoutLogs',  JSON.stringify(workoutLogs));
+            } catch(e) { console.warn('saveLocalOnly error:', e); }
+        }
+
+        function forcSync() {
+            if (!_fbUserId) { showToast('Devi essere loggato per sincronizzare', 'error'); return; }
+            showToast('Sincronizzazione forzata in corso...', 'info');
+            localStorage.setItem('ptLastSave', new Date().toISOString());
+            fbSaveData().then(function(){
+                showToast('Dati caricati su cloud ✅', 'success');
+            }).catch(function(){
+                showToast('Errore sincronizzazione ⚠️', 'error');
+            });
+        }
 
         function saveData() {
             try {
@@ -3535,6 +3562,30 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
         // ══════════════════════════════════════
         var _fbUserId = null;
         var _fbSyncTimeout = null;
+        var _fsUnsubscribe = null; // Real-time Firestore listener
+        var _syncStatus = 'ok'; // 'ok' | 'syncing' | 'error'
+
+        function setSyncStatus(status) {
+            _syncStatus = status;
+            var el = document.getElementById('syncIndicator');
+            if (!el) return;
+            if (status === 'syncing') {
+                el.title = 'Sincronizzazione in corso...';
+                el.textContent = '🔄';
+                el.style.opacity = '1';
+                el.style.animation = 'spin 1s linear infinite';
+            } else if (status === 'ok') {
+                el.title = 'Dati sincronizzati ✓';
+                el.textContent = '☁️';
+                el.style.opacity = '0.7';
+                el.style.animation = 'none';
+            } else {
+                el.title = 'Errore sincronizzazione — riprova';
+                el.textContent = '⚠️';
+                el.style.opacity = '1';
+                el.style.animation = 'none';
+            }
+        }
 
         var ALLOWED_EMAIL = 'raffa.nonnis@gmail.com';
 
@@ -3581,51 +3632,79 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
 
         async function fbSaveData() {
             if (!_fbUserId || !window._fbDb) return;
+            setSyncStatus('syncing');
             try {
+                var now = new Date().toISOString();
                 var docRef = window._fbDoc(window._fbDb, 'users', _fbUserId);
                 await window._fbSetDoc(docRef, {
-                    clients: JSON.stringify(clients),
-                    sessions: JSON.stringify(sessions),
+                    clients:      JSON.stringify(clients),
+                    sessions:     JSON.stringify(sessions),
                     measurements: JSON.stringify(measurements),
-                    workouts: JSON.stringify(workouts),
-                    payments: JSON.stringify(payments),
-                    tests: JSON.stringify(tests),
-                    workoutLogs: JSON.stringify(workoutLogs),
-                    updatedAt: new Date().toISOString()
+                    workouts:     JSON.stringify(workouts),
+                    payments:     JSON.stringify(payments),
+                    tests:        JSON.stringify(tests),
+                    workoutLogs:  JSON.stringify(workoutLogs),
+                    updatedAt:    now
                 });
-            } catch(e) { console.warn('Firebase save error:', e); }
+                localStorage.setItem('ptLastSave', now);
+                setSyncStatus('ok');
+            } catch(e) {
+                console.warn('Firebase save error:', e);
+                setSyncStatus('error');
+            }
         }
 
         async function fbLoadData() {
-            if (!_fbUserId || !window._fbDb) return;
-            try {
-                var docRef = window._fbDoc(window._fbDb, 'users', _fbUserId);
-                var snap = await window._fbGetDoc(docRef);
-                if (snap.exists()) {
-                    var d = snap.data();
-                    // Merge: usa i dati cloud se più recenti, altrimenti localStorage
-                    var cloudUpdated = d.updatedAt ? new Date(d.updatedAt) : new Date(0);
-                    var localUpdated = localStorage.getItem('ptLastSave') ? new Date(localStorage.getItem('ptLastSave')) : new Date(0);
-                    if (cloudUpdated >= localUpdated) {
-                        clients      = JSON.parse(d.clients      || '[]');
-                        sessions     = JSON.parse(d.sessions     || '[]');
-                        measurements = JSON.parse(d.measurements || '[]');
-                        workouts     = JSON.parse(d.workouts     || '[]');
-                        payments     = JSON.parse(d.payments     || '[]');
-                        tests        = JSON.parse(d.tests        || '[]');
-                        workoutLogs  = JSON.parse(d.workoutLogs  || '[]');
-                        saveData(); // aggiorna anche localStorage
-                        renderAll();
-                        
+            if (!_fbUserId || !window._fbDb || !window._fbOnSnapshot) return;
+            // Cancella listener precedente
+            if (_fsUnsubscribe) { _fsUnsubscribe(); _fsUnsubscribe = null; }
+            setSyncStatus('syncing');
+            var docRef = window._fbDoc(window._fbDb, 'users', _fbUserId);
+
+            // Prima: upload se ci sono dati locali orfani (pre-V67, ptLastSave mai impostato)
+            var localSaveStr = localStorage.getItem('ptLastSave');
+            var hasLocalData = (JSON.parse(localStorage.getItem('ptClients')||'[]').length > 0 ||
+                                JSON.parse(localStorage.getItem('ptSessions')||'[]').length > 0);
+            if (!localSaveStr && hasLocalData) {
+                localStorage.setItem('ptLastSave', new Date().toISOString());
+                await fbSaveData();
+            }
+
+            // Listener real-time: si aggiorna automaticamente ogni volta che cambia Firestore
+            _fsUnsubscribe = window._fbOnSnapshot(docRef,
+                function(snap) {
+                    if (snap.exists()) {
+                        var d = snap.data();
+                        var cloudUpdated = d.updatedAt ? new Date(d.updatedAt) : new Date(0);
+                        var localSave = localStorage.getItem('ptLastSave');
+                        var localUpdated = localSave ? new Date(localSave) : new Date(0);
+                        // Aggiorna UI solo se cloud è più recente (evita loop write→snap→write)
+                        if (cloudUpdated > localUpdated) {
+                            clients      = JSON.parse(d.clients      || '[]');
+                            sessions     = JSON.parse(d.sessions     || '[]');
+                            measurements = JSON.parse(d.measurements || '[]');
+                            workouts     = JSON.parse(d.workouts     || '[]');
+                            payments     = JSON.parse(d.payments     || '[]');
+                            tests        = JSON.parse(d.tests        || '[]');
+                            workoutLogs  = JSON.parse(d.workoutLogs  || '[]');
+                            localStorage.setItem('ptLastSave', d.updatedAt || new Date().toISOString());
+                            saveLocalOnly();
+                            renderAll();
+                            showToast('Dati aggiornati dal cloud ☁️', 'success');
+                        }
                     } else {
-                        // localStorage più recente → carica su cloud
-                        fbSaveData();
+                        fbSaveData(); // Prima volta: carica locale su cloud
                     }
-                } else {
-                    // Prima volta → carica localStorage sul cloud
-                    fbSaveData();
+                    setSyncStatus('ok');
+                },
+                function(error) {
+                    console.error('Firestore onSnapshot error:', error);
+                    setSyncStatus('error');
+                    showToast('⚠️ Sync error: ' + error.code + ' — controlla le regole Firestore', 'error');
+                    renderAll(); // Mostra comunque i dati locali
                 }
-            } catch(e) { console.warn('Firebase load error:', e); }
+            );
+            renderAll(); // Render immediato con dati locali mentre aspetta cloud
         }
 
         // Override saveData per salvare anche su Firebase con debounce
