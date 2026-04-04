@@ -3280,6 +3280,44 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
             return result; // mantiene ordine scheda
         }
 
+        // Ritorna esercizi scheda attuale + esercizi storici dai log
+        // Quelli non più in scheda sono segnati con prefisso "▸ " per distinguerli
+        function getExercisesForClientWithHistory(clientId, workoutId) {
+            var current = getExercisesForClient(clientId, workoutId);
+            var seen = {};
+            current.forEach(function(e){ seen[e.toLowerCase()] = true; });
+
+            // Raccoglie esercizi dai workoutLogs reali
+            var clientLogs = workoutLogs.filter(function(l){
+                if(l.clientId !== clientId) return false;
+                if(workoutId && l.workoutId !== workoutId) return false;
+                return true;
+            });
+            var historical = [];
+            var cleanName = function(s){
+                return (s||'').replace(/\s*[-–]\s*\d+[xX]\d+.*$/,'')
+                               .replace(/\s*\d+[xX]\d+.*$/,'')
+                               .replace(/\s*rec\.?.*$/i,'')
+                               .replace(/\s*@\d.*$/,'')
+                               .replace(/\s+/g,' ')
+                               .trim();
+            };
+            clientLogs.forEach(function(l){
+                (l.exercises||[]).forEach(function(ex){
+                    var name = cleanName(ex.name||'');
+                    if(!name || name.length < 2) return;
+                    if(!seen[name.toLowerCase()]){
+                        seen[name.toLowerCase()] = true;
+                        historical.push(name);
+                    }
+                });
+            });
+            historical.sort();
+            // Esercizi attuali prima, poi storici con separatore visivo
+            if(historical.length === 0) return current;
+            return current.concat(['── Storico ──']).concat(historical);
+        }
+
         function updateSessionExerciseList(){
             var clientId=(document.getElementById('progressClientSelect')||{}).value||'';
             var exSel=document.getElementById('sessionExSelect');
@@ -3304,10 +3342,10 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
                     wkSel.style.display='none';
                 }
             }
-            var exList=getExercisesForClient(clientId, workoutId);
+            var exList=getExercisesForClientWithHistory(clientId, workoutId);
             var cur=exSel.value;
             exSel.innerHTML='<option value="">Seleziona esercizio...</option>'+
-                exList.map(function(e){return'<option value="'+e+'"'+(e===cur?' selected':'')+'>'+e+'</option>';}).join('');
+                exList.map(function(e){var isSep=e.startsWith('──');return'<option value="'+(isSep?'':e)+'"'+(isSep?'disabled style="color:var(--color-text-secondary);font-size:11px;"':'')+(e===cur?' selected':'')+'>'+e+'</option>';}).join('');
             if(cur&&!exList.includes(cur)) exSel.value='';
         }
 
