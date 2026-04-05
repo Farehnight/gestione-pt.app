@@ -1091,7 +1091,7 @@
     <!-- Firebase SDK -->
     <script type="module">
       import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-      import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+      import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
       import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
       const firebaseConfig = {
@@ -1108,11 +1108,35 @@
       const db = getFirestore(firebaseApp);
       const provider = new GoogleAuthProvider();
 
+      // Gestisci ritorno da signInWithRedirect
+      getRedirectResult(auth).then(function(result) {
+        if (result && result.user) {
+          console.log('[Auth] redirect login OK:', result.user.email);
+        }
+      }).catch(function(e) {
+        if (e.code && e.code !== 'auth/no-redirect-operation') {
+          console.error('[Auth] redirect error:', e.code, e.message);
+        }
+      });
+
       // Esponi globalmente
       window._fbAuth = auth;
       window._fbDb = db;
       window._fbProvider = provider;
-      window._fbSignIn = () => signInWithPopup(auth, provider);
+      // PWA standalone/mobile → redirect; desktop → popup con fallback
+      const isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+      const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
+      window._fbSignIn = () => {
+        if (isPWA || isMobile) {
+          return signInWithRedirect(auth, provider);
+        }
+        return signInWithPopup(auth, provider).catch(function(e) {
+          if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user') {
+            return signInWithRedirect(auth, provider);
+          }
+          throw e;
+        });
+      };
       window._fbSignOut = () => signOut(auth);
       window._fbSignInWithPopup = signInWithPopup;
       window._fbOnAuthStateChanged = (cb) => onAuthStateChanged(auth, cb);
