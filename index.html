@@ -1091,7 +1091,7 @@
     <!-- Firebase SDK -->
     <script type="module">
       import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-      import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+      import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
       import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
       const firebaseConfig = {
@@ -1108,35 +1108,11 @@
       const db = getFirestore(firebaseApp);
       const provider = new GoogleAuthProvider();
 
-      // Gestisci ritorno da signInWithRedirect
-      getRedirectResult(auth).then(function(result) {
-        if (result && result.user) {
-          console.log('[Auth] redirect login OK:', result.user.email);
-        }
-      }).catch(function(e) {
-        if (e.code && e.code !== 'auth/no-redirect-operation') {
-          console.error('[Auth] redirect error:', e.code, e.message);
-        }
-      });
-
       // Esponi globalmente
       window._fbAuth = auth;
       window._fbDb = db;
       window._fbProvider = provider;
-      // PWA standalone/mobile → redirect; desktop → popup con fallback
-      const isPWA = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
-      const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
-      window._fbSignIn = () => {
-        if (isPWA || isMobile) {
-          return signInWithRedirect(auth, provider);
-        }
-        return signInWithPopup(auth, provider).catch(function(e) {
-          if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user') {
-            return signInWithRedirect(auth, provider);
-          }
-          throw e;
-        });
-      };
+      window._fbSignIn = () => signInWithPopup(auth, provider);
       window._fbSignOut = () => signOut(auth);
       window._fbSignInWithPopup = signInWithPopup;
       window._fbOnAuthStateChanged = (cb) => onAuthStateChanged(auth, cb);
@@ -2604,149 +2580,76 @@ function rpeRir(idx,s,rec){var opts=[6,6.5,7,7.5,8,8.5,9,9.5,10].map(function(v)
         // PROGRESSIONE INTELLIGENTE DEI CARICHI
         // Algoritmo evidence-based (Epley 1985, NSCA, Zourdos 2016, Helms 2016)
         // ══════════════════════════════════════════
-        function getExerciseHistory(exName, wkId, clId, maxSess) {
-            var cleanName = function(s){ return (s||'').toLowerCase()
-                .replace(/\s*[-–]\s*\d+[xX]\d+.*$/,'').replace(/\s*@\d.*$/,'')
-                .replace(/\s*rec\.?.*$/i,'').replace(/\s+/g,' ').trim(); };
-            var cTarget = cleanName(exName);
-            var sorted = workoutLogs.slice().sort(function(a,b){
-                var d=new Date(b.date)-new Date(a.date); return d!==0?d:(b.time||'').localeCompare(a.time||'');
-            });
-            var seen = new Set(); var history = [];
-            for (var li=0; li<sorted.length && history.length<maxSess; li++) {
-                var log = sorted[li];
-                if (log.workoutId !== wkId && log.clientId !== clId) continue;
-                var dateKey = log.date + (log.time||'');
-                if (seen.has(dateKey)) continue;
-                var exData = (log.exercises||[]).find(function(ex){
-                    return cleanName(ex.name||'') === cTarget;
-                });
-                if (!exData || !exData.sets || !exData.sets.length) continue;
-                seen.add(dateKey);
-                var validSets = exData.sets.filter(function(s){ return s.kg>0 && s.reps>0; });
-                if (!validSets.length) continue;
-                var rpeVals = exData.sets.filter(function(s){ return s.rpe!=null; }).map(function(s){ return s.rpe; });
-                history.push({
-                    date: log.date,
-                    sets: validSets,
-                    avgRpe: rpeVals.length ? rpeVals.reduce(function(a,b){return a+b;},0)/rpeVals.length : null
-                });
-            }
-            return history; // dalla più recente alla meno recente
-        }
+        function computeLoadSuggestion(exName, targetRepsStr, prevDataRef) {
+            if (!prevDataRef || !prevDataRef[exName]) return null;
+            var prevSets = Object.values(prevDataRef[exName]);
+            var valid = prevSets.filter(function(s){ return s.kg != null && s.reps != null && s.kg > 0 && s.reps > 0; });
+            if (!valid.length) return null;
 
-        function computeLoadSuggestion(exName, targetRepsStr, wkId, clId) {
-            var history = getExerciseHistory(exName, wkId, clId, 5);
-            if (!history.length) return null;
+            // Epley 1RM (1985): 1RM = kg * (1 + reps/30)
+            var epley = function(kg, reps) { return reps === 1 ? kg : kg * (1 + reps / 30); };
+            var best1RM = Math.max.apply(null, valid.map(function(s){ return epley(s.kg, s.reps); }));
 
-            // ── Formule 1RM per range di reps ──────────────────────────────
-            // Brzycki (1993) per ≤6 reps, Epley (1985) per 7-10, O'Conner (1989) per >10
-            var formula1RM = function(kg, reps) {
-                if (reps <= 0 || kg <= 0) return 0;
-                if (reps === 1) return kg;
-                if (reps <= 6)  return kg / (1.0278 - 0.0278 * reps);   // Brzycki
-                if (reps <= 10) return kg * (1 + reps / 30);             // Epley
-                return kg * (1 + 0.025 * reps);                          // O'Conner
-            };
+            // RPE medio sessione precedente
+            var rpeVals = valid.filter(function(s){ return s.rpe != null; }).map(function(s){ return s.rpe; });
+            var avgRpe = rpeVals.length ? rpeVals.reduce(function(a,b){return a+b;},0)/rpeVals.length : null;
 
-            // ── 1RM stimato per ogni sessione ──────────────────────────────
-            var rmPoints = [];
-            for (var si = 0; si < history.length; si++) {
-                var sess = history[si];
-                var valid = sess.sets.filter(function(s){ return s.kg>0 && s.reps>0; });
-                if (!valid.length) continue;
-                var best1RM = Math.max.apply(null, valid.map(function(s){ return formula1RM(s.kg, s.reps); }));
-                // x=0 = sessione più recente, x cresce andando indietro → per regressione usiamo x crescente nel tempo
-                rmPoints.push({ x: history.length - 1 - si, y: best1RM, avgRpe: sess.avgRpe });
-            }
-            if (!rmPoints.length) return null;
-
-            // ── Regressione lineare multi-sessione ─────────────────────────
-            var projected1RM;
-            var trendKgPerSession = 0;
-            if (rmPoints.length === 1) {
-                projected1RM = rmPoints[0].y;
+            // Fattore progressione basato su RPE (Zourdos 2016, Helms 2016)
+            // RIR residuo = 10 - RPE → ogni RIR ≈ 2.5% del carico
+            var pct = 0.025; // default +2.5%
+            var reason, color;
+            if (avgRpe === null) {
+                // Nessun RPE → progressione standard +2.5%
+                pct = 0.025; reason = '+2.5% (progressione standard)'; color = '#10b981';
+            } else if (avgRpe <= 6) {
+                pct = 0.07; reason = '↑↑ RPE '+avgRpe.toFixed(1)+' → +7%'; color = '#10b981';
+            } else if (avgRpe <= 7) {
+                pct = 0.05; reason = '↑ RPE '+avgRpe.toFixed(1)+' → +5%'; color = '#10b981';
+            } else if (avgRpe <= 7.5) {
+                pct = 0.035; reason = '↑ RPE '+avgRpe.toFixed(1)+' → +3.5%'; color = '#10b981';
+            } else if (avgRpe <= 8) {
+                pct = 0.025; reason = '→ RPE '+avgRpe.toFixed(1)+' → +2.5%'; color = '#10b981';
+            } else if (avgRpe <= 8.5) {
+                pct = 0.0125; reason = '→ RPE '+avgRpe.toFixed(1)+' → +1.25%'; color = '#f59e0b';
+            } else if (avgRpe <= 9) {
+                pct = 0; reason = '≈ RPE '+avgRpe.toFixed(1)+' → mantieni'; color = '#f59e0b';
             } else {
-                var nn = rmPoints.length;
-                var sx=0,sy=0,sxy=0,sxx=0;
-                rmPoints.forEach(function(p){ sx+=p.x; sy+=p.y; sxy+=p.x*p.y; sxx+=p.x*p.x; });
-                var slope = (nn*sxy - sx*sy) / (nn*sxx - sx*sx);
-                var intercept = (sy - slope*sx) / nn;
-                projected1RM = intercept + slope * nn; // proietta alla prossima sessione
-                trendKgPerSession = Math.round(slope * 10) / 10;
-            }
-            if (projected1RM <= 0) return null;
-
-            // ── Deload trigger ─────────────────────────────────────────────
-            // Zourdos/Helms: RPE in aumento costante ≥ 0.5/sessione → segnale di accumulo fatica
-            var deloadAlert = null;
-            var sessWithRpe = history.filter(function(s){ return s.avgRpe != null; });
-            if (sessWithRpe.length >= 3) {
-                // Le sessioni sono dalla più recente alla meno recente, inverto per trend
-                var rpes = sessWithRpe.slice(0, 3).map(function(s){ return s.avgRpe; }).reverse();
-                var rpeSlope = (rpes[2] - rpes[0]) / 2;
-                var lastTwoRpe = (sessWithRpe[0].avgRpe + (sessWithRpe[1] ? sessWithRpe[1].avgRpe : sessWithRpe[0].avgRpe)) / 2;
-                if (rpeSlope >= 0.5) {
-                    deloadAlert = '⚠️ Deload: RPE +' + rpeSlope.toFixed(1) + '/sessione';
-                } else if (lastTwoRpe > 9.0) {
-                    deloadAlert = '⚠️ Deload: RPE medio ' + lastTwoRpe.toFixed(1) + ' ultime 2 sessioni';
-                }
+                pct = -0.025; reason = '↓ RPE '+avgRpe.toFixed(1)+' → -2.5%'; color = '#ef4444';
             }
 
-            // ── RPE-based progression adjustment ──────────────────────────
-            var latestRpe = history[0].avgRpe;
-            var pct, reason, color;
-            if (latestRpe === null) {
-                pct=0.025; reason='std +2.5%'; color='#10b981';
-            } else if (latestRpe <= 6) {
-                pct=0.07; reason='RPE '+latestRpe.toFixed(1)+' → +7%'; color='#10b981';
-            } else if (latestRpe <= 7) {
-                pct=0.05; reason='RPE '+latestRpe.toFixed(1)+' → +5%'; color='#10b981';
-            } else if (latestRpe <= 7.5) {
-                pct=0.035; reason='RPE '+latestRpe.toFixed(1)+' → +3.5%'; color='#10b981';
-            } else if (latestRpe <= 8) {
-                pct=0.025; reason='RPE '+latestRpe.toFixed(1)+' → +2.5%'; color='#10b981';
-            } else if (latestRpe <= 8.5) {
-                pct=0.0125; reason='RPE '+latestRpe.toFixed(1)+' → +1.25%'; color='#f59e0b';
-            } else if (latestRpe <= 9) {
-                pct=0; reason='RPE '+latestRpe.toFixed(1)+' → mantieni'; color='#f59e0b';
-            } else {
-                pct=-0.025; reason='RPE '+latestRpe.toFixed(1)+' → -2.5%'; color='#ef4444';
-            }
-            // Se c'è segnale deload, override
-            if (deloadAlert) { pct=-0.30; color='#ef4444'; }
+            var adjusted1RM = best1RM * (1 + pct);
 
-            // ── Carico consigliato per reps target ────────────────────────
+            // Tabella %1RM per reps target (NSCA Essentials, Prilepin adattato)
             var repIntensity = function(r) {
                 var t={1:1.0,2:0.97,3:0.94,4:0.91,5:0.88,6:0.85,7:0.83,8:0.80,
                        9:0.77,10:0.75,12:0.70,15:0.65,20:0.60};
                 var keys=Object.keys(t).map(Number).sort(function(a,b){return a-b;});
                 r=parseInt(r)||8;
                 if(r<=1)return t[1]; if(r>=20)return t[20];
-                for(var ii=0;ii<keys.length-1;ii++){
-                    if(r>=keys[ii]&&r<=keys[ii+1]){
-                        var f=(r-keys[ii])/(keys[ii+1]-keys[ii]);
-                        return t[keys[ii]]+f*(t[keys[ii+1]]-t[keys[ii]]);
+                for(var i=0;i<keys.length-1;i++){
+                    if(r>=keys[i]&&r<=keys[i+1]){
+                        var f=(r-keys[i])/(keys[i+1]-keys[i]);
+                        return t[keys[i]]+f*(t[keys[i+1]]-t[keys[i]]);
                     }
                 }
                 return 0.75;
             };
-            var adjusted1RM = projected1RM * (1 + pct);
-            var targetReps = parseInt(targetRepsStr)||8;
+
+            var targetReps = parseInt(targetRepsStr) || 8;
             var sugKg = adjusted1RM * repIntensity(targetReps);
+            // Arrotonda al multiplo di 1.25kg più vicino (standard bilanciere olimpico)
             sugKg = Math.round(sugKg / 1.25) * 1.25;
-            var formulaUsed = targetReps<=6?'Brzycki':targetReps<=10?'Epley':'O\'Conner';
+
+            // kg medio ultima sessione (confronto)
+            var avgPrevKg = valid.reduce(function(a,s){return a+s.kg;},0)/valid.length;
 
             return {
                 kg: sugKg,
                 reason: reason,
                 color: color,
-                est1RM: Math.round(projected1RM * 10) / 10,
-                sessionsUsed: rmPoints.length,
-                trend: trendKgPerSession,
-                deload: deloadAlert,
-                hasRpe: latestRpe !== null,
-                formula: formulaUsed
+                est1RM: Math.round(best1RM * 10) / 10,
+                avgPrevKg: Math.round(avgPrevKg * 10) / 10,
+                hasRpe: rpeVals.length > 0
             };
         }
         function badge(val,unit,fallback){if(val==null)return'';var pfx=fallback?'↩ ':'⏱ ';return'<div class="prev-hint"'+(fallback?' style="opacity:.7"':'')+'>'+pfx+val+unit+'</div>';}
@@ -2764,23 +2667,14 @@ var exHtml=parsed.map(function(ex,i){if(ex.type==='section')return'<div class="t
             // Suggerimento carico evidence-based (solo esercizi pesati)
             var suggHtml='';
             if((ex.type==='weighted'||ex.hasKg)&&hasPrev){
-                var sugg=computeLoadSuggestion(ex.name,ex.reps,workoutId,workout.clientId||'');
+                var sugg=computeLoadSuggestion(ex.name,ex.reps,prevData);
                 if(sugg){
-                    var trendTxt=sugg.sessionsUsed>1?(sugg.trend>0?'↑':'↓')+' '+Math.abs(sugg.trend)+'kg/sess':'';
-                    var detailTxt=sugg.formula+' · 1RM '+sugg.est1RM+'kg · '+sugg.sessionsUsed+' sess.'+(trendTxt?' · '+trendTxt:'');
-                    // Se deload: mostra alert rosso sopra
-                    if(sugg.deload){
-                        suggHtml='<div class="trk-load-suggest" style="border-color:#ef444433;background:#ef444412;color:#ef4444;font-size:12px;">'+
-                            sugg.deload+' — consigliato '+sugg.kg+' kg (-30%)'+
-                        '</div>';
-                    } else {
-                        suggHtml='<div class="trk-load-suggest" style="border-color:'+sugg.color+'33;background:'+sugg.color+'18;color:'+sugg.color+'">'+
-                            '🎯 '+sugg.kg+' kg'+
-                            '<span class="sug-reason">'+sugg.reason+'</span>'+
-                            '<span class="sug-detail">'+detailTxt+'</span>'+
-                        '</div>';
-                    }
-                }
+                    var detailTxt='1RM est. '+sugg.est1RM+'kg'+(sugg.hasRpe?' · media RPE':'· nessun RPE');
+                    suggHtml='<div class="trk-load-suggest" style="border-color:'+sugg.color+'33;background:'+sugg.color+'18;color:'+sugg.color+'">'+
+                        '🎯 '+sugg.kg+' kg'+
+                        '<span class="sug-reason">'+sugg.reason+'</span>'+
+                        '<span class="sug-detail">'+detailTxt+'</span>'+
+                    '</div>';
                 }
             }
             return'<div class="trk-ex-card" style="background:'+(BG[ex.type]||'var(--color-bg-primary)')+';border-color:'+(BRD[ex.type]||'transparent')+';border-width:1px;border-style:solid;"><div class="trk-ex-header"><div class="trk-ex-name">'+ex.name+'</div><span class="trk-ex-badge">'+(ICO[ex.type]||'')+' '+(LBL[ex.type]||'')+'</span></div><div class="trk-ex-target">&#x1F3AF; '+tgt+'</div>'+suggHtml+rows+'<textarea id="notes_'+i+'" placeholder="Note..." class="form-textarea trk-notes"></textarea></div>';}).join('');
@@ -3516,7 +3410,7 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
         }
 
         
-        function openAddPaymentModal() {
+            setTimeout(function(){ wbInit(''); }, 30); function openAddPaymentModal() {
             document.getElementById('paymentForm').reset();
             document.getElementById('paymentDate').value = toLocalDateStr();
             document.getElementById('paymentStatus').value = 'pagato';
