@@ -2580,76 +2580,159 @@ function rpeRir(idx,s,rec){var opts=[6,6.5,7,7.5,8,8.5,9,9.5,10].map(function(v)
         // PROGRESSIONE INTELLIGENTE DEI CARICHI
         // Algoritmo evidence-based (Epley 1985, NSCA, Zourdos 2016, Helms 2016)
         // ══════════════════════════════════════════
-        function computeLoadSuggestion(exName, targetRepsStr, prevDataRef) {
-            if (!prevDataRef || !prevDataRef[exName]) return null;
-            var prevSets = Object.values(prevDataRef[exName]);
-            var valid = prevSets.filter(function(s){ return s.kg != null && s.reps != null && s.kg > 0 && s.reps > 0; });
-            if (!valid.length) return null;
+        function getExerciseHistory(exName, wkId, clId, maxSess) {
+            var cleanEx = function(s) {
+                return (s||'').toLowerCase()
+                    .replace(/\s*[-\u2013]\s*\d+[xX]\d+.*$/, '')
+                    .replace(/\s*@\d.*$/, '')
+                    .replace(/\s*rec\.?.*$/i, '')
+                    .replace(/\s+/g, ' ').trim();
+            };
+            var target = cleanEx(exName);
+            var sorted = workoutLogs.slice().sort(function(a, b) {
+                var diff = new Date(b.date) - new Date(a.date);
+                return diff !== 0 ? diff : (b.time || '').localeCompare(a.time || '');
+            });
+            var seenDates = {};
+            var history = [];
+            for (var li = 0; li < sorted.length && history.length < maxSess; li++) {
+                var log = sorted[li];
+                if (log.workoutId !== wkId && log.clientId !== clId) continue;
+                var dateKey = log.date + '|' + (log.time || '');
+                if (seenDates[dateKey]) continue;
+                var exData = null;
+                for (var ei = 0; ei < (log.exercises || []).length; ei++) {
+                    if (cleanEx(log.exercises[ei].name || '') === target) {
+                        exData = log.exercises[ei];
+                        break;
+                    }
+                }
+                if (!exData || !exData.sets || !exData.sets.length) continue;
+                seenDates[dateKey] = true;
+                var validSets = exData.sets.filter(function(s) { return s.kg > 0 && s.reps > 0; });
+                if (!validSets.length) continue;
+                var rpeSum = 0, rpeCount = 0;
+                for (var si = 0; si < exData.sets.length; si++) {
+                    if (exData.sets[si].rpe != null) { rpeSum += exData.sets[si].rpe; rpeCount++; }
+                }
+                history.push({
+                    date: log.date,
+                    sets: validSets,
+                    avgRpe: rpeCount > 0 ? rpeSum / rpeCount : null
+                });
+            }
+            return history;
+        }
 
-            // Epley 1RM (1985): 1RM = kg * (1 + reps/30)
-            var epley = function(kg, reps) { return reps === 1 ? kg : kg * (1 + reps / 30); };
-            var best1RM = Math.max.apply(null, valid.map(function(s){ return epley(s.kg, s.reps); }));
+        function computeLoadSuggestion(exName, targetRepsStr, wkId, clId) {
+            var history = getExerciseHistory(exName, wkId, clId, 5);
+            if (!history.length) return null;
 
-            // RPE medio sessione precedente
-            var rpeVals = valid.filter(function(s){ return s.rpe != null; }).map(function(s){ return s.rpe; });
-            var avgRpe = rpeVals.length ? rpeVals.reduce(function(a,b){return a+b;},0)/rpeVals.length : null;
+            var formula1RM = function(kg, reps) {
+                if (reps <= 0 || kg <= 0) return 0;
+                if (reps === 1) return kg;
+                if (reps <= 6)  return kg / (1.0278 - 0.0278 * reps);
+                if (reps <= 10) return kg * (1 + reps / 30);
+                return kg * (1 + 0.025 * reps);
+            };
 
-            // Fattore progressione basato su RPE (Zourdos 2016, Helms 2016)
-            // RIR residuo = 10 - RPE → ogni RIR ≈ 2.5% del carico
-            var pct = 0.025; // default +2.5%
-            var reason, color;
-            if (avgRpe === null) {
-                // Nessun RPE → progressione standard +2.5%
-                pct = 0.025; reason = '+2.5% (progressione standard)'; color = '#10b981';
-            } else if (avgRpe <= 6) {
-                pct = 0.07; reason = '↑↑ RPE '+avgRpe.toFixed(1)+' → +7%'; color = '#10b981';
-            } else if (avgRpe <= 7) {
-                pct = 0.05; reason = '↑ RPE '+avgRpe.toFixed(1)+' → +5%'; color = '#10b981';
-            } else if (avgRpe <= 7.5) {
-                pct = 0.035; reason = '↑ RPE '+avgRpe.toFixed(1)+' → +3.5%'; color = '#10b981';
-            } else if (avgRpe <= 8) {
-                pct = 0.025; reason = '→ RPE '+avgRpe.toFixed(1)+' → +2.5%'; color = '#10b981';
-            } else if (avgRpe <= 8.5) {
-                pct = 0.0125; reason = '→ RPE '+avgRpe.toFixed(1)+' → +1.25%'; color = '#f59e0b';
-            } else if (avgRpe <= 9) {
-                pct = 0; reason = '≈ RPE '+avgRpe.toFixed(1)+' → mantieni'; color = '#f59e0b';
+            var rmPoints = [];
+            for (var si = 0; si < history.length; si++) {
+                var sess = history[si];
+                var best = 0;
+                for (var ri = 0; ri < sess.sets.length; ri++) {
+                    var est = formula1RM(sess.sets[ri].kg, sess.sets[ri].reps);
+                    if (est > best) best = est;
+                }
+                if (best > 0) {
+                    rmPoints.push({ x: history.length - 1 - si, y: best });
+                }
+            }
+            if (!rmPoints.length) return null;
+
+            var projected1RM, trendKg = 0;
+            if (rmPoints.length === 1) {
+                projected1RM = rmPoints[0].y;
             } else {
-                pct = -0.025; reason = '↓ RPE '+avgRpe.toFixed(1)+' → -2.5%'; color = '#ef4444';
+                var nn = rmPoints.length;
+                var sx = 0, sy = 0, sxy = 0, sxx = 0;
+                for (var pi = 0; pi < nn; pi++) {
+                    sx += rmPoints[pi].x; sy += rmPoints[pi].y;
+                    sxy += rmPoints[pi].x * rmPoints[pi].y;
+                    sxx += rmPoints[pi].x * rmPoints[pi].x;
+                }
+                var denom = nn * sxx - sx * sx;
+                if (denom === 0) {
+                    projected1RM = sy / nn;
+                } else {
+                    var slope = (nn * sxy - sx * sy) / denom;
+                    var intercept = (sy - slope * sx) / nn;
+                    projected1RM = intercept + slope * nn;
+                    trendKg = Math.round(slope * 10) / 10;
+                }
+            }
+            if (projected1RM <= 0) return null;
+
+            var deloadAlert = null;
+            var sessWithRpe = history.filter(function(s) { return s.avgRpe != null; });
+            if (sessWithRpe.length >= 3) {
+                var r0 = sessWithRpe[2].avgRpe;
+                var r1 = sessWithRpe[1].avgRpe;
+                var r2 = sessWithRpe[0].avgRpe;
+                var rpeSlope = (r2 - r0) / 2;
+                var last2avg = (r2 + r1) / 2;
+                if (rpeSlope >= 0.5) {
+                    deloadAlert = 'Deload: RPE +' + rpeSlope.toFixed(1) + '/sess';
+                } else if (last2avg > 9.0) {
+                    deloadAlert = 'Deload: RPE medio ' + last2avg.toFixed(1);
+                }
             }
 
-            var adjusted1RM = best1RM * (1 + pct);
+            var latestRpe = history[0].avgRpe;
+            var pct, reason, color;
+            if (deloadAlert) {
+                pct = -0.30; reason = deloadAlert; color = '#ef4444';
+            } else if (latestRpe === null) {
+                pct = 0.025; reason = 'std +2.5%'; color = '#10b981';
+            } else if (latestRpe <= 6)   { pct = 0.07;   reason = 'RPE ' + latestRpe.toFixed(1) + ' +7%';    color = '#10b981'; }
+            else if (latestRpe <= 7)     { pct = 0.05;   reason = 'RPE ' + latestRpe.toFixed(1) + ' +5%';    color = '#10b981'; }
+            else if (latestRpe <= 7.5)   { pct = 0.035;  reason = 'RPE ' + latestRpe.toFixed(1) + ' +3.5%';  color = '#10b981'; }
+            else if (latestRpe <= 8)     { pct = 0.025;  reason = 'RPE ' + latestRpe.toFixed(1) + ' +2.5%';  color = '#10b981'; }
+            else if (latestRpe <= 8.5)   { pct = 0.0125; reason = 'RPE ' + latestRpe.toFixed(1) + ' +1.25%'; color = '#f59e0b'; }
+            else if (latestRpe <= 9)     { pct = 0;      reason = 'RPE ' + latestRpe.toFixed(1) + ' mantieni'; color = '#f59e0b'; }
+            else                         { pct = -0.025; reason = 'RPE ' + latestRpe.toFixed(1) + ' -2.5%';  color = '#ef4444'; }
 
-            // Tabella %1RM per reps target (NSCA Essentials, Prilepin adattato)
-            var repIntensity = function(r) {
-                var t={1:1.0,2:0.97,3:0.94,4:0.91,5:0.88,6:0.85,7:0.83,8:0.80,
-                       9:0.77,10:0.75,12:0.70,15:0.65,20:0.60};
-                var keys=Object.keys(t).map(Number).sort(function(a,b){return a-b;});
-                r=parseInt(r)||8;
-                if(r<=1)return t[1]; if(r>=20)return t[20];
-                for(var i=0;i<keys.length-1;i++){
-                    if(r>=keys[i]&&r<=keys[i+1]){
-                        var f=(r-keys[i])/(keys[i+1]-keys[i]);
-                        return t[keys[i]]+f*(t[keys[i+1]]-t[keys[i]]);
+            var repInt = function(r) {
+                var t = {1:1.0,2:0.97,3:0.94,4:0.91,5:0.88,6:0.85,7:0.83,8:0.80,
+                         9:0.77,10:0.75,12:0.70,15:0.65,20:0.60};
+                var keys = [1,2,3,4,5,6,7,8,9,10,12,15,20];
+                r = parseInt(r) || 8;
+                if (r <= 1)  return t[1];
+                if (r >= 20) return t[20];
+                for (var ki = 0; ki < keys.length - 1; ki++) {
+                    if (r >= keys[ki] && r <= keys[ki+1]) {
+                        var f = (r - keys[ki]) / (keys[ki+1] - keys[ki]);
+                        return t[keys[ki]] + f * (t[keys[ki+1]] - t[keys[ki]]);
                     }
                 }
                 return 0.75;
             };
 
             var targetReps = parseInt(targetRepsStr) || 8;
-            var sugKg = adjusted1RM * repIntensity(targetReps);
-            // Arrotonda al multiplo di 1.25kg più vicino (standard bilanciere olimpico)
-            sugKg = Math.round(sugKg / 1.25) * 1.25;
-
-            // kg medio ultima sessione (confronto)
-            var avgPrevKg = valid.reduce(function(a,s){return a+s.kg;},0)/valid.length;
+            var adjusted1RM = projected1RM * (1 + pct);
+            var sugKg = Math.round((adjusted1RM * repInt(targetReps)) / 1.25) * 1.25;
+            var formulaLabel = targetReps <= 6 ? 'Brzycki' : (targetReps <= 10 ? 'Epley' : "O'Conner");
 
             return {
                 kg: sugKg,
                 reason: reason,
                 color: color,
-                est1RM: Math.round(best1RM * 10) / 10,
-                avgPrevKg: Math.round(avgPrevKg * 10) / 10,
-                hasRpe: rpeVals.length > 0
+                est1RM: Math.round(projected1RM * 10) / 10,
+                sessionsUsed: rmPoints.length,
+                trend: trendKg,
+                deload: deloadAlert,
+                hasRpe: latestRpe !== null,
+                formula: formulaLabel
             };
         }
         function badge(val,unit,fallback){if(val==null)return'';var pfx=fallback?'↩ ':'⏱ ';return'<div class="prev-hint"'+(fallback?' style="opacity:.7"':'')+'>'+pfx+val+unit+'</div>';}
@@ -2667,14 +2750,22 @@ var exHtml=parsed.map(function(ex,i){if(ex.type==='section')return'<div class="t
             // Suggerimento carico evidence-based (solo esercizi pesati)
             var suggHtml='';
             if((ex.type==='weighted'||ex.hasKg)&&hasPrev){
-                var sugg=computeLoadSuggestion(ex.name,ex.reps,prevData);
+                var sugg=computeLoadSuggestion(ex.name,ex.reps,workoutId,workout.clientId||'');
                 if(sugg){
-                    var detailTxt='1RM est. '+sugg.est1RM+'kg'+(sugg.hasRpe?' · media RPE':'· nessun RPE');
-                    suggHtml='<div class="trk-load-suggest" style="border-color:'+sugg.color+'33;background:'+sugg.color+'18;color:'+sugg.color+'">'+
-                        '🎯 '+sugg.kg+' kg'+
-                        '<span class="sug-reason">'+sugg.reason+'</span>'+
-                        '<span class="sug-detail">'+detailTxt+'</span>'+
-                    '</div>';
+                    var trendTxt=sugg.sessionsUsed>1?(sugg.trend>=0?'↑':'↓')+Math.abs(sugg.trend)+'kg/sess':'';
+                    var detailTxt=sugg.formula+' · 1RM '+sugg.est1RM+'kg · '+sugg.sessionsUsed+' sess'+(trendTxt?' · '+trendTxt:'');
+                    if(sugg.deload){
+                        suggHtml='<div class="trk-load-suggest" style="border-color:#ef444433;background:#ef444412;color:#ef4444">'+
+                            '⚠️ '+sugg.reason+' → '+sugg.kg+'kg (-30%)'+
+                            '<span class="sug-detail">'+detailTxt+'</span>'+
+                        '</div>';
+                    } else {
+                        suggHtml='<div class="trk-load-suggest" style="border-color:'+sugg.color+'33;background:'+sugg.color+'18;color:'+sugg.color+'">'+
+                            '🎯 '+sugg.kg+' kg'+
+                            '<span class="sug-reason">'+sugg.reason+'</span>'+
+                            '<span class="sug-detail">'+detailTxt+'</span>'+
+                        '</div>';
+                    }
                 }
             }
             return'<div class="trk-ex-card" style="background:'+(BG[ex.type]||'var(--color-bg-primary)')+';border-color:'+(BRD[ex.type]||'transparent')+';border-width:1px;border-style:solid;"><div class="trk-ex-header"><div class="trk-ex-name">'+ex.name+'</div><span class="trk-ex-badge">'+(ICO[ex.type]||'')+' '+(LBL[ex.type]||'')+'</span></div><div class="trk-ex-target">&#x1F3AF; '+tgt+'</div>'+suggHtml+rows+'<textarea id="notes_'+i+'" placeholder="Note..." class="form-textarea trk-notes"></textarea></div>';}).join('');
