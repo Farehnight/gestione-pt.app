@@ -2735,7 +2735,7 @@ function rpeRir(idx,s,rec){var opts=[6,6.5,7,7.5,8,8.5,9,9.5,10].map(function(v)
             var targetReps = parseInt(targetRepsStr)||8;
             var sugKg = adjusted1RM * repIntensity(targetReps);
             sugKg = Math.round(sugKg / 1.25) * 1.25;
-            var formulaUsed = targetReps<=6?'Brzycki':targetReps<=10?'Epley':'O'Conner';
+            var formulaUsed = targetReps<=6?'Brzycki':targetReps<=10?'Epley':'O\'Conner';
 
             return {
                 kg: sugKg,
