@@ -2354,6 +2354,7 @@ function showToast(msg, type) {
 
                 <div style="display: flex; gap: 10px; margin-top: 20px;">
                     <button class="btn" style="flex: 1;" onclick="closeClientDetailModal(); editClient('${client.id}')">Modifica</button>
+                    <button class="btn btn-secondary" onclick="shareClientPortal('${client.id}')">🔗 Link</button>
                     <button class="btn btn-secondary" onclick="closeClientDetailModal()">Chiudi</button>
                 </div>
             `;
@@ -4083,7 +4084,133 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
 
          
 
-        window.addEventListener('DOMContentLoaded', init);
+        // ═══════════════════════════════════════
+        // PORTALE CLIENTE (link condivisibile senza login)
+        // ═══════════════════════════════════════
+        function generatePortalToken() {
+            return 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+        }
+
+        function getOrCreatePortalLink(clientId) {
+            var client = clients.find(function(c){ return c.id === clientId; });
+            if (!client) return null;
+            if (!client.portalToken) {
+                client.portalToken = generatePortalToken();
+                saveData();
+            }
+            publishClientPortal(clientId);
+            return window.location.origin + window.location.pathname + '?portal=' + client.portalToken;
+        }
+
+        function publishClientPortal(clientId) {
+            var client = clients.find(function(c){ return c.id === clientId; });
+            if (!client || !client.portalToken || !window._fbDb) return;
+            var now = new Date();
+            var clientSessions = sessions.filter(function(s){ return s.clientId === clientId; });
+            var upcoming = clientSessions.filter(function(s){ return new Date(s.date + 'T' + s.time) >= now; })
+                .sort(function(a, b){ return new Date(a.date + 'T' + a.time) - new Date(b.date + 'T' + b.time); })
+                .slice(0, 5);
+            var clientWorkouts = workouts.filter(function(w){ return w.clientId === clientId; });
+            var clientMeasurements = measurements.filter(function(m){ return m.clientId === clientId; })
+                .sort(function(a, b){ return new Date(a.date) - new Date(b.date); })
+                .slice(-10);
+            var clientPayments = payments.filter(function(p){ return p.clientId === clientId; })
+                .map(function(p){ return { type: p.type, amount: p.amount, date: p.date, expiry: p.expiry, status: p.status }; });
+
+            var payload = {
+                name: client.name,
+                surname: client.surname,
+                goal: client.goal || '',
+                upcomingSessions: upcoming,
+                workouts: clientWorkouts,
+                measurements: clientMeasurements,
+                payments: clientPayments,
+                updatedAt: new Date().toISOString()
+            };
+            var docRef = window._fbDoc(window._fbDb, 'portal', client.portalToken);
+            window._fbSetDoc(docRef, payload).catch(function(e){ console.error('Errore pubblicazione portale:', e); });
+        }
+
+        function shareClientPortal(clientId) {
+            var link = getOrCreatePortalLink(clientId);
+            if (!link) return;
+            setTimeout(function() {
+                if (navigator.share) {
+                    navigator.share({ title: 'Il tuo portale allenamento', url: link }).catch(function(){});
+                } else if (navigator.clipboard) {
+                    navigator.clipboard.writeText(link).then(function(){
+                        if (typeof showToast === 'function') showToast('Link copiato! 🔗', 'success');
+                        else alert('Link copiato: ' + link);
+                    });
+                } else {
+                    prompt('Copia questo link:', link);
+                }
+            }, 600);
+        }
+
+        function checkPortalMode() {
+            var params = new URLSearchParams(window.location.search);
+            var token = params.get('portal');
+            if (!token) return false;
+            document.body.innerHTML = '<div id="portalRoot" style="max-width:480px;margin:0 auto;padding:24px;font-family:system-ui,sans-serif;color:#0f172a;">Caricamento...</div>';
+            loadPortalData(token);
+            return true;
+        }
+
+        function loadPortalData(token) {
+            if (!window._fbDb || !window._fbGetDoc || !window._fbDoc) {
+                document.addEventListener('firebaseReady', function(){ loadPortalData(token); });
+                return;
+            }
+            var docRef = window._fbDoc(window._fbDb, 'portal', token);
+            window._fbGetDoc(docRef).then(function(snap) {
+                if (!snap.exists()) {
+                    document.getElementById('portalRoot').innerHTML = '<p>Link non valido o scaduto.</p>';
+                    return;
+                }
+                renderPortalView(snap.data());
+            }).catch(function() {
+                document.getElementById('portalRoot').innerHTML = '<p>Errore di caricamento. Riprova più tardi.</p>';
+            });
+        }
+
+        function renderPortalView(data) {
+            var root = document.getElementById('portalRoot');
+            if (!root) return;
+
+            var upcomingHtml = (data.upcomingSessions || []).map(function(s) {
+                var d = new Date(s.date + 'T' + s.time);
+                return '<div style="padding:10px;background:#f1f5f9;border-radius:8px;margin-bottom:8px;">' +
+                    '<strong>' + d.toLocaleDateString('it-IT', { weekday: 'short', day: '2-digit', month: 'short' }) + ' alle ' + s.time + '</strong>' +
+                    '<div style="color:#64748b;font-size:13px;">' + s.type + ' · ' + s.duration + ' min</div></div>';
+            }).join('') || '<p style="color:#64748b;">Nessuna sessione programmata.</p>';
+
+            var workoutsHtml = (data.workouts || []).map(function(w) {
+                return '<div style="padding:12px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:10px;">' +
+                    '<strong>' + w.name + '</strong>' +
+                    '<div style="font-size:13px;color:#64748b;margin:4px 0;">' + w.type + ' · ' + w.duration + ' min</div>' +
+                    '<pre style="white-space:pre-wrap;font-size:13px;font-family:inherit;">' + (w.exercises || '') + '</pre></div>';
+            }).join('') || '<p style="color:#64748b;">Nessuna scheda assegnata.</p>';
+
+            var paymentsHtml = (data.payments || []).map(function(p) {
+                var c = p.status === 'pagato' ? '#10b981' : (p.status === 'scaduto' ? '#ef4444' : '#f59e0b');
+                return '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e2e8f0;">' +
+                    '<span>' + p.type + ' · ' + new Date(p.date).toLocaleDateString('it-IT') + '</span>' +
+                    '<span style="color:' + c + ';font-weight:600;">' + p.status + '</span></div>';
+            }).join('') || '<p style="color:#64748b;">Nessun pagamento registrato.</p>';
+
+            root.innerHTML =
+                '<h2 style="margin-bottom:4px;">Ciao ' + data.name + '! 👋</h2>' +
+                '<p style="color:#64748b;font-size:14px;margin-bottom:20px;">Il tuo portale personale</p>' +
+                '<h3 style="margin:20px 0 10px;">📅 Prossime sessioni</h3>' + upcomingHtml +
+                '<h3 style="margin:20px 0 10px;">🏋️ Le tue schede</h3>' + workoutsHtml +
+                '<h3 style="margin:20px 0 10px;">💳 Pagamenti</h3>' + paymentsHtml;
+        }
+
+        window.addEventListener('DOMContentLoaded', function() {
+            if (checkPortalMode()) return;
+            init();
+        });
     
         // ══════════════════════════════════════
         // FIREBASE SYNC
