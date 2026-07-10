@@ -1086,7 +1086,112 @@
             .cal-day-num { font-size:11px; margin-bottom:1px; }
         }
 
-        </style>
+        
+        /* Portale Cliente */
+        body.portal-mode {
+            background: var(--color-bg-primary);
+            color: var(--color-text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            min-height: 100vh;
+        }
+        .portal-wrap {
+            max-width: 520px;
+            margin: 0 auto;
+            padding: 24px 16px 60px;
+        }
+        .portal-loading, .portal-error {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--color-text-secondary);
+            font-size: 15px;
+        }
+        .portal-header {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 24px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--color-border);
+        }
+        .portal-avatar {
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: var(--gradient-primary);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            font-weight: 700;
+            flex-shrink: 0;
+            box-shadow: var(--shadow-md);
+        }
+        .portal-title {
+            margin: 0 0 2px;
+            font-size: 19px;
+            font-weight: 700;
+            color: var(--color-text-primary);
+        }
+        .portal-subtitle {
+            margin: 0;
+            font-size: 13px;
+            color: var(--color-text-secondary);
+        }
+        .portal-section-title {
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--color-text-secondary);
+            margin: 22px 0 10px;
+        }
+        .portal-item {
+            margin-bottom: 10px;
+        }
+        .portal-exercises {
+            white-space: pre-wrap;
+            font-family: inherit;
+            font-size: 13px;
+            margin: 0;
+            color: var(--color-text-primary);
+        }
+        .portal-payment-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 14px;
+            background: var(--color-bg-secondary);
+            border: 1px solid var(--color-border);
+            border-radius: 10px;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+        .portal-stat-label {
+            font-size: 11px;
+            color: var(--color-text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .portal-stat-value {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--color-primary);
+        }
+        .portal-empty {
+            color: var(--color-text-secondary);
+            font-size: 13px;
+            padding: 12px 0;
+        }
+        .portal-footer {
+            text-align: center;
+            font-size: 11px;
+            color: var(--color-text-secondary);
+            margin-top: 32px;
+            opacity: 0.7;
+        }
+    </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <!-- Firebase SDK -->
     <script type="module">
@@ -2003,6 +2108,8 @@ function showToast(msg, type) {
                 _fbSyncTimeout = setTimeout(function() {
                     fbSaveData();
                 }, 2000);
+                // Ripubblica i portali cliente attivi con i dati aggiornati
+                schedulePortalRepublish();
             } catch (e) {
                 console.error('Errore salvataggio:', e);
                 showToast('Errore nel salvataggio locale ⚠️', 'error');
@@ -4131,6 +4238,18 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
             window._fbSetDoc(docRef, payload).catch(function(e){ console.error('Errore pubblicazione portale:', e); });
         }
 
+        // Ripubblica automaticamente i portali attivi ogni volta che i dati cambiano
+        var _portalRepublishTimeout = null;
+        function schedulePortalRepublish() {
+            if (_portalRepublishTimeout) clearTimeout(_portalRepublishTimeout);
+            _portalRepublishTimeout = setTimeout(function() {
+                if (typeof clients === 'undefined' || !window._fbDb) return;
+                clients.forEach(function(c) {
+                    if (c.portalToken) publishClientPortal(c.id);
+                });
+            }, 2500);
+        }
+
         function shareClientPortal(clientId) {
             var link = getOrCreatePortalLink(clientId);
             if (!link) return;
@@ -4139,7 +4258,7 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
                     navigator.share({ title: 'Il tuo portale allenamento', url: link }).catch(function(){});
                 } else if (navigator.clipboard) {
                     navigator.clipboard.writeText(link).then(function(){
-                        if (typeof showToast === 'function') showToast('Link copiato! 🔗', 'success');
+                        if (typeof showToast === 'function') showToast('Link copiato! \U0001F517', 'success');
                         else alert('Link copiato: ' + link);
                     });
                 } else {
@@ -4152,26 +4271,41 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
             var params = new URLSearchParams(window.location.search);
             var token = params.get('portal');
             if (!token) return false;
-            document.body.innerHTML = '<div id="portalRoot" style="max-width:480px;margin:0 auto;padding:24px;font-family:system-ui,sans-serif;color:#0f172a;">Caricamento...</div>';
+            document.body.classList.add('portal-mode');
+            document.body.innerHTML = '<div id="portalRoot" class="portal-wrap"><div class="portal-loading">Caricamento\u2026</div></div>';
             loadPortalData(token);
             return true;
         }
 
+        var _portalUnsubscribe = null;
         function loadPortalData(token) {
-            if (!window._fbDb || !window._fbGetDoc || !window._fbDoc) {
+            if (!window._fbDb || !window._fbDoc) {
                 document.addEventListener('firebaseReady', function(){ loadPortalData(token); });
                 return;
             }
             var docRef = window._fbDoc(window._fbDb, 'portal', token);
-            window._fbGetDoc(docRef).then(function(snap) {
-                if (!snap.exists()) {
-                    document.getElementById('portalRoot').innerHTML = '<p>Link non valido o scaduto.</p>';
-                    return;
-                }
-                renderPortalView(snap.data());
-            }).catch(function() {
-                document.getElementById('portalRoot').innerHTML = '<p>Errore di caricamento. Riprova più tardi.</p>';
-            });
+            // Aggiornamento in tempo reale: se il PT modifica i dati, il cliente li vede senza ricaricare
+            if (window._fbOnSnapshot) {
+                _portalUnsubscribe = window._fbOnSnapshot(docRef, function(snap) {
+                    if (!snap.exists()) {
+                        document.getElementById('portalRoot').innerHTML = '<div class="portal-error">Link non valido o scaduto.</div>';
+                        return;
+                    }
+                    renderPortalView(snap.data());
+                }, function() {
+                    document.getElementById('portalRoot').innerHTML = '<div class="portal-error">Errore di caricamento.</div>';
+                });
+            } else if (window._fbGetDoc) {
+                window._fbGetDoc(docRef).then(function(snap) {
+                    if (!snap.exists()) {
+                        document.getElementById('portalRoot').innerHTML = '<div class="portal-error">Link non valido o scaduto.</div>';
+                        return;
+                    }
+                    renderPortalView(snap.data());
+                }).catch(function() {
+                    document.getElementById('portalRoot').innerHTML = '<div class="portal-error">Errore di caricamento.</div>';
+                });
+            }
         }
 
         function renderPortalView(data) {
@@ -4180,31 +4314,47 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
 
             var upcomingHtml = (data.upcomingSessions || []).map(function(s) {
                 var d = new Date(s.date + 'T' + s.time);
-                return '<div style="padding:10px;background:#f1f5f9;border-radius:8px;margin-bottom:8px;">' +
-                    '<strong>' + d.toLocaleDateString('it-IT', { weekday: 'short', day: '2-digit', month: 'short' }) + ' alle ' + s.time + '</strong>' +
-                    '<div style="color:#64748b;font-size:13px;">' + s.type + ' · ' + s.duration + ' min</div></div>';
-            }).join('') || '<p style="color:#64748b;">Nessuna sessione programmata.</p>';
+                return '<div class="detail-view portal-item">' +
+                    '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+                    '<strong>' + d.toLocaleDateString('it-IT', { weekday: 'short', day: '2-digit', month: 'short' }) + '</strong>' +
+                    '<span class="client-status" style="background:var(--color-primary-light);color:#fff;">' + s.time + '</span></div>' +
+                    '<div style="color:var(--color-text-secondary);font-size:13px;margin-top:6px;">' + s.type + ' \u00b7 ' + s.duration + ' min</div></div>';
+            }).join('') || '<p class="portal-empty">Nessuna sessione programmata.</p>';
 
             var workoutsHtml = (data.workouts || []).map(function(w) {
-                return '<div style="padding:12px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:10px;">' +
-                    '<strong>' + w.name + '</strong>' +
-                    '<div style="font-size:13px;color:#64748b;margin:4px 0;">' + w.type + ' · ' + w.duration + ' min</div>' +
-                    '<pre style="white-space:pre-wrap;font-size:13px;font-family:inherit;">' + (w.exercises || '') + '</pre></div>';
-            }).join('') || '<p style="color:#64748b;">Nessuna scheda assegnata.</p>';
+                return '<div class="detail-view portal-item">' +
+                    '<div style="font-weight:700;font-size:15px;margin-bottom:4px;">' + w.name + '</div>' +
+                    '<div style="font-size:13px;color:var(--color-text-secondary);margin-bottom:8px;">' + w.type + ' \u00b7 ' + w.duration + ' min</div>' +
+                    '<pre class="portal-exercises">' + (w.exercises || '') + '</pre></div>';
+            }).join('') || '<p class="portal-empty">Nessuna scheda assegnata.</p>';
 
             var paymentsHtml = (data.payments || []).map(function(p) {
-                var c = p.status === 'pagato' ? '#10b981' : (p.status === 'scaduto' ? '#ef4444' : '#f59e0b');
-                return '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #e2e8f0;">' +
-                    '<span>' + p.type + ' · ' + new Date(p.date).toLocaleDateString('it-IT') + '</span>' +
-                    '<span style="color:' + c + ';font-weight:600;">' + p.status + '</span></div>';
-            }).join('') || '<p style="color:#64748b;">Nessun pagamento registrato.</p>';
+                var statusLabel = p.status === 'pagato' ? 'Pagato' : (p.status === 'scaduto' ? 'Scaduto' : 'In attesa');
+                return '<div class="portal-payment-row">' +
+                    '<span>' + p.type + ' \u00b7 ' + new Date(p.date).toLocaleDateString('it-IT') + '</span>' +
+                    '<span class="client-status status-' + (p.status === 'pagato' ? 'active' : 'inactive') + '">' + statusLabel + '</span></div>';
+            }).join('') || '<p class="portal-empty">Nessun pagamento registrato.</p>';
+
+            var lastMeasure = (data.measurements || [])[data.measurements.length - 1];
+            var measureHtml = lastMeasure ? (
+                '<div class="detail-view portal-item">' +
+                '<div style="display:flex;gap:16px;flex-wrap:wrap;">' +
+                (lastMeasure.weight ? '<div><div class="portal-stat-label">Peso</div><div class="portal-stat-value">' + lastMeasure.weight + ' kg</div></div>' : '') +
+                (lastMeasure.bodyFat ? '<div><div class="portal-stat-label">Massa Grassa</div><div class="portal-stat-value">' + lastMeasure.bodyFat + ' %</div></div>' : '') +
+                '</div><div style="font-size:12px;color:var(--color-text-secondary);margin-top:8px;">Aggiornato il ' + new Date(lastMeasure.date).toLocaleDateString('it-IT') + '</div></div>'
+            ) : '';
 
             root.innerHTML =
-                '<h2 style="margin-bottom:4px;">Ciao ' + data.name + '! 👋</h2>' +
-                '<p style="color:#64748b;font-size:14px;margin-bottom:20px;">Il tuo portale personale</p>' +
-                '<h3 style="margin:20px 0 10px;">📅 Prossime sessioni</h3>' + upcomingHtml +
-                '<h3 style="margin:20px 0 10px;">🏋️ Le tue schede</h3>' + workoutsHtml +
-                '<h3 style="margin:20px 0 10px;">💳 Pagamenti</h3>' + paymentsHtml;
+                '<div class="portal-header">' +
+                    '<div class="portal-avatar">' + (data.name ? data.name.charAt(0).toUpperCase() : '?') + '</div>' +
+                    '<div><h2 class="portal-title">Ciao ' + data.name + '!</h2>' +
+                    '<p class="portal-subtitle">' + (data.goal || 'Il tuo portale personale') + '</p></div>' +
+                '</div>' +
+                '<div class="portal-section-title">\U0001F4C5 Prossime sessioni</div>' + upcomingHtml +
+                (measureHtml ? '<div class="portal-section-title">\U0001F4CF Ultima misurazione</div>' + measureHtml : '') +
+                '<div class="portal-section-title">\U0001F3CB\uFE0F Le tue schede</div>' + workoutsHtml +
+                '<div class="portal-section-title">\U0001F4B3 Pagamenti</div>' + paymentsHtml +
+                '<div class="portal-footer">Dati aggiornati automaticamente dal tuo trainer</div>';
         }
 
         window.addEventListener('DOMContentLoaded', function() {
