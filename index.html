@@ -4133,7 +4133,7 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
 
         function publishClientPortal(clientId) {
             var client = clients.find(function(c){ return c.id === clientId; });
-            if (!client || !client.portalToken || !window.fbDb) return;
+            if (!client || !client.portalToken || !window._fbDb) return;
             var now = new Date();
             var clientSessions = sessions.filter(function(s){ return s.clientId === clientId; });
             var upcoming = clientSessions.filter(function(s){ return new Date(s.date + 'T' + s.time) >= now; })
@@ -4156,15 +4156,15 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
                 payments: clientPayments,
                 updatedAt: new Date().toISOString()
             };
-            var docRef = window.fbDoc(window.fbDb, 'portal', client.portalToken);
-            window.fbSetDoc(docRef, payload).catch(function(e){ console.error('Errore pubblicazione portale:', e); });
+            var docRef = window._fbDoc(window._fbDb, 'portal', client.portalToken);
+            window._fbSetDoc(docRef, payload).catch(function(e){ console.error('Errore pubblicazione portale:', e); });
         }
 
         var _portalRepublishTimeout = null;
         function schedulePortalRepublish() {
             if (_portalRepublishTimeout) clearTimeout(_portalRepublishTimeout);
             _portalRepublishTimeout = setTimeout(function() {
-                if (typeof clients === 'undefined' || !window.fbDb) return;
+                if (typeof clients === 'undefined' || !window._fbDb) return;
                 clients.forEach(function(c) { if (c.portalToken) publishClientPortal(c.id); });
             }, 2500);
         }
@@ -4183,8 +4183,8 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
             }, 600);
         }
 
-        function portalActionCollection(token) { return window.fbCollection(window.fbDb, 'portal', token, 'actions'); }
-        function portalActionDoc(token, actionId) { return window.fbDoc(window.fbDb, 'portal', token, 'actions', actionId); }
+        function portalActionCollection(token) { return window._fbCollection(window._fbDb, 'portal', token, 'actions'); }
+        function portalActionDoc(token, actionId) { return window._fbDoc(window._fbDb, 'portal', token, 'actions', actionId); }
 
         function checkPortalMode() {
             var params = new URLSearchParams(window.location.search);
@@ -4200,13 +4200,13 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
 
         function loadPortalData(token) {
             _portalToken = token;
-            if (!window.fbDb || !window.fbDoc) {
+            if (!window._fbDb || !window._fbDoc) {
                 document.addEventListener('firebaseReady', function(){ loadPortalData(token); }, { once:true });
                 return;
             }
-            var docRef = window.fbDoc(window.fbDb, 'portal', token);
-            if (window.fbOnSnapshot) {
-                _portalUnsubscribe = window.fbOnSnapshot(docRef, function(snap) {
+            var docRef = window._fbDoc(window._fbDb, 'portal', token);
+            if (window._fbOnSnapshot) {
+                _portalUnsubscribe = window._fbOnSnapshot(docRef, function(snap) {
                     if (!snap.exists()) {
                         document.getElementById('portalRoot').innerHTML = '<div class="portal-error">Link non valido o scaduto.</div>';
                         return;
@@ -4221,8 +4221,8 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
         }
 
         function subscribePortalActions(token) {
-            if (_portalActionsUnsubscribe || !window.fbOnSnapshot || !window.fbCollection) return;
-            _portalActionsUnsubscribe = window.fbOnSnapshot(portalActionCollection(token), function(snapshot) {
+            if (_portalActionsUnsubscribe || !window._fbOnSnapshot || !window._fbCollection) return;
+            _portalActionsUnsubscribe = window._fbOnSnapshot(portalActionCollection(token), function(snapshot) {
                 var list = [];
                 snapshot.forEach(function(docSnap) { var d = docSnap.data() || {}; d.id = docSnap.id; list.push(d); });
                 list.sort(function(a,b){ return new Date((b.createdAt || '1970-01-01')) - new Date((a.createdAt || '1970-01-01')); });
@@ -4236,11 +4236,11 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
         }
 
         function sendPortalAction(type, payload, btnEl) {
-            if (!_portalToken || !window.fbSetDoc) return;
+            if (!_portalToken || !window._fbSetDoc) return;
             if (btnEl) btnEl.disabled = true;
             var id = type + '_' + Date.now().toString(36);
             var docRef = portalActionDoc(_portalToken, id);
-            window.fbSetDoc(docRef, Object.assign({ type:type, createdAt:new Date().toISOString(), status:'new' }, payload || {})).then(function(){
+            window._fbSetDoc(docRef, Object.assign({ type:type, createdAt:new Date().toISOString(), status:'new' }, payload || {})).then(function(){
                 alert('Richiesta inviata');
             }).catch(function(e){
                 console.error('Errore invio azione portale:', e);
