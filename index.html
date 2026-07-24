@@ -4260,7 +4260,7 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
                 saveData();
             }
             publishClientPortal(clientId);
-            return window.location.origin + window.location.pathname + '?portal=' + client.portalToken;
+            return window.location.origin + window.location.pathname + '?portal=' + client.portalToken + '#portal=' + client.portalToken;
         }
 
         function publishClientPortal(clientId) {
@@ -4318,12 +4318,20 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
         function portalActionCollection(token) { return window._fbCollection(window._fbDb, 'portal', token, 'actions'); }
         function portalActionDoc(token, actionId) { return window._fbDoc(window._fbDb, 'portal', token, 'actions', actionId); }
 
-        function checkPortalMode() {
+        function getPortalTokenFromUrl() {
             var params = new URLSearchParams(window.location.search);
             var token = params.get('portal');
+            if (!token && window.location.hash && window.location.hash.indexOf('#portal=') === 0) token = window.location.hash.replace('#portal=', '');
+            return token;
+        }
+
+        function checkPortalMode() {
+            var token = getPortalTokenFromUrl();
             if (!token) return false;
             document.body.classList.add('portal-mode');
             document.body.innerHTML = '<div id="portalRoot" class="portal-wrap"><div class="portal-loading">Caricamento…</div></div>';
+            if (window._portalBooted) return true;
+            window._portalBooted = true;
             loadPortalData(token);
             return true;
         }
