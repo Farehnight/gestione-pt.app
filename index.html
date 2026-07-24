@@ -4340,23 +4340,38 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
 
         function loadPortalData(token) {
             _portalToken = token;
+            function renderFromDoc(snap) {
+                if (!snap || !snap.exists || !snap.exists()) {
+                    document.getElementById('portalRoot').innerHTML = '<div class="portal-error">Link non valido o scaduto.</div>';
+                    return;
+                }
+                _portalCurrentData = snap.data();
+                renderPortalView(_portalCurrentData, _portalActions);
+                subscribePortalActions(token);
+            }
             if (!window._fbDb || !window._fbDoc) {
-                document.addEventListener('firebaseReady', function(){ loadPortalData(token); }, { once:true });
+                setTimeout(function(){ loadPortalData(token); }, 250);
                 return;
             }
             var docRef = window._fbDoc(window._fbDb, 'portal', token);
             if (window._fbOnSnapshot) {
                 _portalUnsubscribe = window._fbOnSnapshot(docRef, function(snap) {
-                    if (!snap.exists()) {
-                        document.getElementById('portalRoot').innerHTML = '<div class="portal-error">Link non valido o scaduto.</div>';
-                        return;
-                    }
-                    _portalCurrentData = snap.data();
-                    renderPortalView(_portalCurrentData, _portalActions);
-                    subscribePortalActions(token);
+                    renderFromDoc(snap);
                 }, function() {
+                    if (window._fbGetDoc) {
+                        window._fbGetDoc(docRef).then(renderFromDoc).catch(function() {
+                            document.getElementById('portalRoot').innerHTML = '<div class="portal-error">Errore di caricamento.</div>';
+                        });
+                    } else {
+                        document.getElementById('portalRoot').innerHTML = '<div class="portal-error">Errore di caricamento.</div>';
+                    }
+                });
+            } else if (window._fbGetDoc) {
+                window._fbGetDoc(docRef).then(renderFromDoc).catch(function() {
                     document.getElementById('portalRoot').innerHTML = '<div class="portal-error">Errore di caricamento.</div>';
                 });
+            } else {
+                document.getElementById('portalRoot').innerHTML = '<div class="portal-error">Firebase non disponibile.</div>';
             }
         }
 
