@@ -4329,7 +4329,7 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
             var token = getPortalTokenFromUrl();
             if (!token) return false;
             document.body.classList.add('portal-mode');
-            document.body.innerHTML = '<div id="portalRoot" class="portal-wrap"><div class="portal-loading">Caricamento…</div><div id="portalDebug" style="margin-top:12px;font-size:12px;opacity:.75;">Init...</div></div>';
+            document.body.innerHTML = '<div id="portalRoot" class="portal-wrap"><div class="portal-loading">Caricamento…</div><div id="portalDebug" style="margin-top:12px;font-size:12px;opacity:.75;">Init...</div></div><div id="portalBootDebug" style="position:fixed;left:12px;bottom:12px;z-index:99999;background:#111;color:#fff;padding:8px 10px;border-radius:8px;font-size:12px;max-width:calc(100vw - 24px);">boot</div>';
             if (window._portalBooted) return true;
             window._portalBooted = true;
             loadPortalData(token);
@@ -4340,7 +4340,7 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
 
         function loadPortalData(token) {
             var dbg = document.getElementById('portalDebug');
-            if (dbg) dbg.textContent = 'Caricamento dati Firebase...';
+            if (dbg) dbg.textContent = 'Caricamento dati Firebase...'; var boot = document.getElementById('portalBootDebug'); if (boot) boot.textContent = 'loadPortalData()';
 
             _portalToken = token;
             function renderFromDoc(snap) {
@@ -4659,7 +4659,10 @@ function switchPortalTab(tabName, btnEl) {
         var _originalSaveData = saveData;
         saveData = function() { _originalSaveData(); schedulePortalRepublish(); };
 
-        window.addEventListener('DOMContentLoaded', function() {
+        window.addEventListener('error', function(e){ var b=document.getElementById('portalBootDebug'); if(b) b.textContent='ERROR: ' + (e.message || 'unknown'); });
+        window.addEventListener('unhandledrejection', function(e){ var b=document.getElementById('portalBootDebug'); if(b) b.textContent='PROMISE: ' + ((e.reason && e.reason.message) || e.reason || 'unknown'); });
+
+window.addEventListener('DOMContentLoaded', function() {
             if (checkPortalMode()) return;
             init();
             initPushNotifications();
