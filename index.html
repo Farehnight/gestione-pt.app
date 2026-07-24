@@ -4339,10 +4339,13 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
         var _portalUnsubscribe = null, _portalActionsUnsubscribe = null, _portalCurrentData = null, _portalActions = [], _portalToken = null;
 
         function loadPortalData(token) {
+            var dbg = document.getElementById('portalDebug');
+            if (dbg) dbg.textContent = 'Caricamento dati Firebase...';
+
             _portalToken = token;
             function renderFromDoc(snap) {
                 if (!snap || !snap.exists || !snap.exists()) {
-                    document.getElementById('portalRoot').innerHTML = '<div class="portal-error">Link non valido o scaduto.</div>';
+                    document.getElementById('portalRoot').innerHTML = '<div class=\"portal-error\">Link non valido o scaduto.</div><div style=\"font-size:12px;opacity:.8;margin-top:8px;\">Token: ' + token + '</div>';
                     return;
                 }
                 _portalCurrentData = snap.data();
@@ -4350,7 +4353,7 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
                 subscribePortalActions(token);
             }
             if (!window._fbDb || !window._fbDoc) {
-                setTimeout(function(){ loadPortalData(token); }, 250);
+                if (dbg) dbg.textContent = 'Firebase non pronto, ritento...'; setTimeout(function(){ loadPortalData(token); }, 250);
                 return;
             }
             var docRef = window._fbDoc(window._fbDb, 'portal', token);
@@ -4371,7 +4374,7 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
                     document.getElementById('portalRoot').innerHTML = '<div class="portal-error">Errore di caricamento.</div>';
                 });
             } else {
-                document.getElementById('portalRoot').innerHTML = '<div class="portal-error">Firebase non disponibile.</div>';
+                document.getElementById('portalRoot').innerHTML = '<div class="portal-error">Firebase non disponibile.</div><div style="font-size:12px;opacity:.8;margin-top:8px;">Controlla il caricamento degli script Firebase.</div>';
             }
         }
 
