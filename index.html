@@ -4339,13 +4339,13 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
         var _portalUnsubscribe = null, _portalActionsUnsubscribe = null, _portalCurrentData = null, _portalActions = [], _portalToken = null;
 
         function loadPortalData(token) {
-            var dbg = document.getElementById('portalDebug');
-            if (dbg) dbg.textContent = 'Caricamento dati Firebase...'; var boot = document.getElementById('portalBootDebug'); if (boot) boot.textContent = 'loadPortalData()';
+            var dbg = document.getElementById('portalDebug'); var rootStatus = document.getElementById('portalBootDebug');
+            if (dbg) dbg.textContent = 'Caricamento dati Firebase...'; if (rootStatus) rootStatus.textContent = 'loadPortalData()';
 
             _portalToken = token;
             function renderFromDoc(snap) {
                 if (!snap || !snap.exists || !snap.exists()) {
-                    document.getElementById('portalRoot').innerHTML = '<div class=\"portal-error\">Link non valido o scaduto.</div><div style=\"font-size:12px;opacity:.8;margin-top:8px;\">Token: ' + token + '</div>';
+                    var pr=document.getElementById('portalRoot'); if (pr) pr.innerHTML = '<div class=\"portal-error\">Link non valido o scaduto.</div><div style=\"font-size:12px;opacity:.8;margin-top:8px;\">Token: ' + token + '</div>';
                     return;
                 }
                 _portalCurrentData = snap.data();
@@ -4363,7 +4363,7 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
                 }, function() {
                     if (window._fbGetDoc) {
                         window._fbGetDoc(docRef).then(renderFromDoc).catch(function() {
-                            document.getElementById('portalRoot').innerHTML = '<div class="portal-error">Errore di caricamento.</div>';
+                            var pr=document.getElementById('portalRoot'); if (pr) pr.innerHTML = '<div class="portal-error">Errore di caricamento.</div>';
                         });
                     } else {
                         document.getElementById('portalRoot').innerHTML = '<div class="portal-error">Errore di caricamento.</div>';
