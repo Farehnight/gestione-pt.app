@@ -4409,31 +4409,86 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
                     '</div>';
             }).join('') || '<p class="portal-empty">Nessuna sessione programmata.</p>';
 
+            function parseWorkoutStructure(raw) {
+                var lines = (raw || '').split(/\r?\n/).map(function(x){ return x.trim(); }).filter(Boolean);
+                var sections = [];
+                var current = null;
+                lines.forEach(function(line) {
+                    if (/^[-•]/.test(line) || /\b(serie|set|round)\b/i.test(line) || /x\s*\d+/i.test(line)) {
+                        current = current || { kind: 'exercise', title: 'Esercizio', lines: [] };
+                        current.lines.push(line);
+                    } else if (/[:：]$/.test(line) || /^(petto|dorso|schiena|gambe|spalle|tricipiti|bicipiti|glutei|addome|core)\b/i.test(line)) {
+                        sections.push({ kind: 'section', title: line.replace(/[:：]$/, ''), lines: [] });
+                        current = null;
+                    } else {
+                        sections.push({ kind: 'exercise', title: line, lines: [] });
+                        current = sections[sections.length - 1];
+                    }
+                });
+                if (!sections.length) sections.push({ kind: 'exercise', title: 'Scheda', lines: [] });
+                return sections;
+            }
+
+            function buildSeriesCount(text) {
+                var m = String(text || '').match(/(\d+)\s*[x×]\s*(\d+)/i);
+                return m ? parseInt(m[1], 10) : 1;
+            }
+
+            function buildRestSeconds(text) {
+                var m = String(text || '').match(/(?:recupero|rest)\s*(\d+)\s*s/i);
+                if (m) return parseInt(m[1], 10);
+                var mm = String(text || '').match(/(?:recupero|rest)\s*(\d+)\s*m/i);
+                if (mm) return parseInt(mm[1], 10) * 60;
+                return 0;
+            }
+
+            function escapeHtml(s) {
+                return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+            }
+
             var workoutsHtml = (data.workouts || []).map(function(w) {
                 var already = getPortalActionValue('workout_feedback', null, w.id);
-                var exerciseLines = (w.exercises || '').split('\n').filter(function(x){ return x.trim(); });
-                var stepsHtml = exerciseLines.map(function(line, i) {
-                    var safe = line.replace(/</g,'&lt;').replace(/>/g,'&gt;');
-                    return '<div class="run-exercise" data-exercise-index="' + i + '">' +
-                        '<div class="run-exercise-head"><strong>' + safe + '</strong><span class="run-pill">Esercizio ' + (i + 1) + '</span></div>' +
-                        '<div class="run-fields">' +
-                            '<label><span>Set</span><input type="number" min="0" value="0" class="run-input" data-run-field="sets"></label>' +
-                            '<label><span>Rep</span><input type="number" min="0" value="0" class="run-input" data-run-field="reps"></label>' +
-                            '<label><span>Kg</span><input type="number" step="0.5" min="0" value="0" class="run-input" data-run-field="kg"></label>' +
-                            '<label><span>RPE</span><input type="number" min="0" max="10" value="0" class="run-input" data-run-field="rpe"></label>' +
-                        '</div>' +
+                var sections = parseWorkoutStructure(w.exercises || '');
+                var htmlSections = sections.map(function(block, blockIdx) {
+                    if (block.kind === 'section') {
+                        return '<div class="run-group-title">' + escapeHtml(block.title) + '</div>';
+                    }
+                    var header = escapeHtml(block.title || ('Esercizio ' + (blockIdx + 1)));
+                    var isWarmup = /riscaldamento|mobilità|mobilita|attivazione/i.test(header);
+                    var isBodyweight = /plank|cane e gatto|circonduzioni|stretch|mobilità|mobilita/i.test(header);
+                    var series = buildSeriesCount((block.lines || []).join(' '));
+                    var restSeconds = buildRestSeconds((block.lines || []).join(' '));
+                    var seriesHtml = '';
+                    if (isWarmup || isBodyweight) {
+                        seriesHtml = '<label class="run-simple-check"><input type="checkbox" class="run-simple-checkbox" data-complete-only="1"><span>Eseguito</span></label>';
+                    } else {
+                        for (var i = 0; i < series; i++) {
+                            seriesHtml += '<div class="run-series" data-series-index="' + i + '">' +
+                                '<div class="run-series-head"><strong>Serie ' + (i + 1) + '</strong><span class="run-series-rest" data-rest="' + restSeconds + '">' + (restSeconds ? (Math.round(restSeconds / 60) + ' min') : 'Nessun recupero') + '</span></div>' +
+                                '<div class="run-fields">' +
+                                    '<label><span>Rep</span><input type="number" min="0" value="0" class="run-input" data-run-field="reps"></label>' +
+                                    '<label><span>Kg</span><input type="number" step="0.5" min="0" value="0" class="run-input" data-run-field="kg"></label>' +
+                                    '<label><span>RPE</span><input type="number" min="0" max="10" value="0" class="run-input" data-run-field="rpe"></label>' +
+                                    '<div class="run-series-action"><button class="btn btn-small run-rpe-btn" type="button" onclick="runSeriesRpe(this)">Salva RPE</button></div>' +
+                                '</div>' +
+                            '</div>';
+                        }
+                    }
+                    return '<div class="run-exercise" data-exercise-index="' + blockIdx + '">' +
+                        '<div class="run-exercise-head"><strong>' + header + '</strong><span class="run-pill">' + (isWarmup ? 'Riscaldamento' : (isBodyweight ? 'Corpo libero' : 'Esercizio')) + '</span></div>' +
+                        (block.lines && block.lines.length ? '<div class="run-raw">' + escapeHtml(block.lines.join(' · ')) + '</div>' : '') +
+                        seriesHtml +
                         '<label class="run-note-label"><span>Note</span><textarea class="run-textarea" data-run-field="note" placeholder="Note su tecnica, fastidio, recupero..."></textarea></label>' +
                     '</div>';
-                }).join('') || '<p class="portal-empty">Nessun esercizio nella scheda.</p>';
+                }).join('');
                 return '<div class="detail-view portal-item">' +
-                    '<div style="font-weight:700;font-size:15px;margin-bottom:4px;">' + w.name + '</div>' +
-                    '<div style="font-size:13px;color:var(--color-text-secondary);margin-bottom:8px;">' + w.type + ' · ' + w.duration + ' min</div>' +
-                    '<div class="run-summary">' + stepsHtml + '</div>' +
+                    '<div style="font-weight:700;font-size:15px;margin-bottom:4px;">' + escapeHtml(w.name) + '</div>' +
+                    '<div style="font-size:13px;color:var(--color-text-secondary);margin-bottom:8px;">' + escapeHtml(w.type || '') + ' · ' + escapeHtml(w.duration || '') + ' min</div>' +
+                    '<div class="run-summary">' + htmlSections + '</div>' +
                     '<div class="portal-action-row" style="margin-top:12px;">' +
                         '<button class="btn btn-small" onclick="saveRunSession(\'' + w.id + '\', this)">Salva esecuzione</button>' +
-                        '<button class="btn btn-secondary btn-small" onclick="portalSendWorkoutFeedback(\'' + w.id + '\')">Invia feedback rapido</button>' +
                     '</div>' +
-                    (already ? '<div class="portal-note-sent">Ultimo feedback inviato' + (already.note ? ': ' + already.note : '') + '</div>' : '') +
+                    (already ? '<div class="portal-note-sent">Ultimo feedback inviato' + (already.note ? ': ' + escapeHtml(already.note) : '') + '</div>' : '') +
                     '</div>';
             }).join('') || '<p class="portal-empty">Nessuna scheda assegnata.</p>';
 
@@ -4484,6 +4539,69 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
         }
 
         function switchPortalTab(tabName, btnEl) {
+            document.querySelectorAll('.portal-tab').forEach(function(t){ t.classList.remove('active'); });
+            document.querySelectorAll('.portal-panel').forEach(function(p){ p.classList.remove('active'); });
+            if (btnEl) btnEl.classList.add('active');
+            var panel = document.querySelector('.portal-panel[data-ppanel="' + tabName + '"]');
+            if (panel) panel.classList.add('active');
+        }
+
+        function runSeriesRpe(btn) {
+            var series = btn.closest('.run-series');
+            if (!series) return;
+            var rpe = series.querySelector('[data-run-field="rpe"]').value;
+            if (rpe && Number(rpe) > 0) startRestTimer(series);
+        }
+
+        function startRestTimer(series) {
+            var el = series.querySelector('.run-series-rest');
+            if (!el) return;
+            var sec = parseInt(el.getAttribute('data-rest') || '0', 10);
+            if (!sec) return;
+            var remain = sec;
+            clearInterval(window._restTimer);
+            window._restTimer = setInterval(function() {
+                remain -= 1;
+                if (remain <= 0) {
+                    clearInterval(window._restTimer);
+                    el.textContent = 'Recupero finito';
+                    try { new Notification('Recupero finito', { body: 'Puoi passare alla prossima serie.' }); } catch (e) {}
+                    return;
+                }
+                var m = Math.floor(remain / 60), s = remain % 60;
+                el.textContent = m + ':' + (s < 10 ? '0' + s : s);
+            }, 1000);
+        }
+
+        function saveRunSession(workoutId, btnEl) {
+            var card = btnEl && btnEl.closest('.portal-item');
+            if (!card) return;
+            var payload = {
+                workoutId: workoutId,
+                type: 'run_session',
+                createdAt: new Date().toISOString(),
+                exercises: []
+            };
+            card.querySelectorAll('.run-exercise').forEach(function(row) {
+                var title = row.querySelector('.run-exercise-head strong') ? row.querySelector('.run-exercise-head strong').textContent : '';
+                var isSimple = row.querySelector('.run-simple-checkbox');
+                if (isSimple) {
+                    payload.exercises.push({ name: title, completed: !!isSimple.checked });
+                    return;
+                }
+                var series = [];
+                row.querySelectorAll('.run-series').forEach(function(s) {
+                    series.push({
+                        reps: s.querySelector('[data-run-field="reps"]').value,
+                        kg: s.querySelector('[data-run-field="kg"]').value,
+                        rpe: s.querySelector('[data-run-field="rpe"]').value,
+                        note: s.querySelector('[data-run-field="note"]').value
+                    });
+                });
+                payload.exercises.push({ name: title, series: series });
+            });
+            sendPortalAction('run_session', payload, btnEl);
+        }function switchPortalTab(tabName, btnEl) {
             document.querySelectorAll('.portal-tab').forEach(function(t){ t.classList.remove('active'); });
             document.querySelectorAll('.portal-panel').forEach(function(p){ p.classList.remove('active'); });
             if (btnEl) btnEl.classList.add('active');
