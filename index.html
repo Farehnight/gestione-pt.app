@@ -4329,7 +4329,7 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
             var token = getPortalTokenFromUrl();
             if (!token) return false;
             document.body.classList.add('portal-mode');
-            document.body.innerHTML = '<div id="portalRoot" class="portal-wrap"><div class="portal-loading">Caricamento…</div></div>';
+            document.body.innerHTML = '<div id="portalRoot" class="portal-wrap"><div class="portal-loading">Caricamento…</div><div id="portalDebug" style="margin-top:12px;font-size:12px;opacity:.75;">Init...</div></div>';
             if (window._portalBooted) return true;
             window._portalBooted = true;
             loadPortalData(token);
