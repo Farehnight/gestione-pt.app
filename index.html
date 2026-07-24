@@ -1109,6 +1109,102 @@
         .portal-stat-value { font-size:20px; font-weight:700; color:var(--color-primary); }
         .portal-empty { color:var(--color-text-secondary); font-size:13px; padding:12px 0; }
         .portal-footer { text-align:center; font-size:11px; color:var(--color-text-secondary); margin-top:32px; opacity:.7; }
+        .portal-next-card {
+            background: var(--gradient-primary);
+            color: #fff;
+            border-radius: 14px;
+            padding: 16px 18px;
+            margin-bottom: 20px;
+            box-shadow: var(--shadow-md);
+        }
+        .portal-next-label { font-size:11px; text-transform:uppercase; letter-spacing:.5px; opacity:.85; margin-bottom:4px; }
+        .portal-next-date { font-size:17px; font-weight:700; text-transform:capitalize; }
+        .portal-next-time { font-size:13px; opacity:.9; margin-top:2px; }
+        .portal-tabs {
+            display: flex;
+            gap: 6px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+            margin-bottom: 16px;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+        }
+        .portal-tabs::-webkit-scrollbar { display: none; }
+        .portal-tab {
+            flex-shrink: 0;
+            padding: 8px 14px;
+            border-radius: 999px;
+            border: 1px solid var(--color-border);
+            background: var(--color-bg-secondary);
+            color: var(--color-text-secondary);
+            font-size: 12.5px;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all .2s;
+        }
+        .portal-tab.active {
+            background: var(--gradient-primary);
+            color: #fff;
+            border-color: transparent;
+        }
+        .portal-panel { display: none; animation: fadeIn .3s ease-out; }
+        .portal-panel.active { display: block; }
+        .inbox-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 18px;
+            height: 18px;
+            padding: 0 5px;
+            border-radius: 999px;
+            background: var(--color-error);
+            color: #fff;
+            font-size: 10px;
+            font-weight: 700;
+            margin-left: 4px;
+        }
+        .inbox-toolbar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        .inbox-item {
+            border-left: none;
+            position: relative;
+        }
+        .inbox-item.unread {
+            border: 1px solid var(--color-primary);
+            box-shadow: 0 0 0 3px rgba(8, 145, 178, 0.08);
+        }
+        .inbox-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 6px;
+        }
+        .inbox-client {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--color-text-primary);
+            margin-bottom: 4px;
+        }
+        .inbox-meta {
+            font-size: 11px;
+            color: var(--color-text-secondary);
+            margin-bottom: 8px;
+        }
+        .inbox-note {
+            font-size: 13px;
+            color: var(--color-text-primary);
+            background: var(--color-bg-primary);
+            border-radius: 8px;
+            padding: 8px 10px;
+            margin-bottom: 8px;
+        }
+
         .portal-action-row { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
         .portal-form { margin-top:12px; padding-top:12px; border-top:1px solid var(--color-border); }
         .portal-form-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px; }
@@ -1241,6 +1337,11 @@
         <button class="tab" onclick="switchTab('payments', this)">
             <span class="tab-icon">💰</span>
             <span>Pagamenti</span>
+        </button>
+        <button class="tab" onclick="switchTab('inbox', this)">
+            <span class="tab-icon">📥</span>
+            <span>Richieste</span>
+            <span id="inboxBadge" class="inbox-badge" style="display:none;">0</span>
         </button>
     </div>
 
@@ -1382,6 +1483,16 @@
         </div>
     </div>
 
+
+        <!-- Inbox Richieste Tab -->
+        <div id="inbox" class="tab-content">
+            <h2 style="padding: 0 4px;">Richieste Clienti</h2>
+            <div class="inbox-toolbar">
+                <button class="btn btn-secondary btn-small" onclick="refreshInbox()">🔄 Aggiorna</button>
+                <button id="pushEnableBtn" class="btn btn-small">🔔 Attiva notifiche</button>
+            </div>
+            <div id="inboxPanel"></div>
+        </div>
     <!-- Modals (same as desktop but optimized) -->
     <div id="clientModal" class="modal">
         <div class="modal-content">
@@ -2056,6 +2167,7 @@ function showToast(msg, type) {
             }
             if (tabName === 'workouts') renderWorkouts();
             if (tabName === 'payments') renderPayments();
+            if (tabName === 'inbox') openInboxTab();
         }
 
         function switchProgressView(view){currentProgressView=view;
@@ -4273,6 +4385,7 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
             var root = document.getElementById('portalRoot');
             if (!root) return;
             actions = actions || [];
+
             var upcomingHtml = (data.upcomingSessions || []).map(function(s) {
                 var d = new Date(s.date + 'T' + s.time);
                 var confirmed = getPortalActionValue('session_confirm', s.id, null);
@@ -4307,17 +4420,49 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
             var measureHtml = lastMeasure ? ('<div class="detail-view portal-item"><div style="display:flex;gap:16px;flex-wrap:wrap;">' +
                 (lastMeasure.weight ? '<div><div class="portal-stat-label">Peso</div><div class="portal-stat-value">' + lastMeasure.weight + ' kg</div></div>' : '') +
                 (lastMeasure.bodyFat ? '<div><div class="portal-stat-label">Massa Grassa</div><div class="portal-stat-value">' + lastMeasure.bodyFat + ' %</div></div>' : '') +
-                '</div><div style="font-size:12px;color:var(--color-text-secondary);margin-top:8px;">Aggiornato il ' + new Date(lastMeasure.date).toLocaleDateString('it-IT') + '</div></div>') : '';
+                '</div><div style="font-size:12px;color:var(--color-text-secondary);margin-top:8px;">Aggiornato il ' + new Date(lastMeasure.date).toLocaleDateString('it-IT') + '</div></div>') : '<p class="portal-empty">Nessuna misurazione registrata.</p>';
 
-            var timelineHtml = actions.length ? '<div class="detail-view portal-item">' + actions.slice(0, 6).map(function(a){ var label = a.type === 'session_confirm' ? 'Presenza confermata' : a.type === 'session_change_request' ? 'Richiesta cambio sessione' : 'Feedback workout'; return '<div class="portal-history-row"><strong>' + label + '</strong><div style="font-size:12px;color:var(--color-text-secondary);">' + new Date(a.createdAt).toLocaleString('it-IT') + (a.note ? ' · ' + a.note : '') + '</div></div>'; }).join('') + '</div>' : '';
+            var timelineHtml = actions.length ? actions.slice(0, 6).map(function(a){
+                var label = a.type === 'session_confirm' ? 'Presenza confermata' : a.type === 'session_change_request' ? 'Richiesta cambio sessione' : 'Feedback workout';
+                return '<div class="portal-history-row"><strong>' + label + '</strong><div style="font-size:12px;color:var(--color-text-secondary);">' + new Date(a.createdAt).toLocaleString('it-IT') + (a.note ? ' · ' + a.note : '') + '</div></div>';
+            }).join('') : '<p class="portal-empty">Nessuna richiesta inviata finora.</p>';
 
-            root.innerHTML = '<div class="portal-header"><div class="portal-avatar">' + (data.name ? data.name.charAt(0).toUpperCase() : '?') + '</div><div><h2 class="portal-title">Ciao ' + data.name + '!</h2><p class="portal-subtitle">' + (data.goal || 'Il tuo portale personale') + '</p></div></div>' +
-                '<div class="portal-section-title">📅 Prossime sessioni</div>' + upcomingHtml +
-                (measureHtml ? '<div class="portal-section-title">📏 Ultima misurazione</div>' + measureHtml : '') +
-                '<div class="portal-section-title">🏋️ Le tue schede</div>' + workoutsHtml +
-                '<div class="portal-section-title">💳 Pagamenti</div>' + paymentsHtml +
-                (timelineHtml ? '<div class="portal-section-title">📝 Le tue richieste</div>' + timelineHtml : '') +
+            var nextSession = (data.upcomingSessions || [])[0];
+            var nextSessionHtml = nextSession ? (
+                '<div class="portal-next-card">' +
+                    '<div class="portal-next-label">Prossima sessione</div>' +
+                    '<div class="portal-next-date">' + new Date(nextSession.date + 'T' + nextSession.time).toLocaleDateString('it-IT', { weekday: 'long', day: '2-digit', month: 'long' }) + '</div>' +
+                    '<div class="portal-next-time">' + nextSession.time + ' · ' + nextSession.type + '</div>' +
+                '</div>'
+            ) : '';
+
+            root.innerHTML =
+                '<div class="portal-header">' +
+                    '<div class="portal-avatar">' + (data.name ? data.name.charAt(0).toUpperCase() : '?') + '</div>' +
+                    '<div><h2 class="portal-title">Ciao ' + data.name + '!</h2><p class="portal-subtitle">' + (data.goal || 'Il tuo portale personale') + '</p></div>' +
+                '</div>' +
+                nextSessionHtml +
+                '<div class="portal-tabs">' +
+                    '<button class="portal-tab active" data-ptab="sessioni" onclick="switchPortalTab(\'sessioni\', this)">📅 Sessioni</button>' +
+                    '<button class="portal-tab" data-ptab="schede" onclick="switchPortalTab(\'schede\', this)">🏋️ Schede</button>' +
+                    '<button class="portal-tab" data-ptab="progressi" onclick="switchPortalTab(\'progressi\', this)">📏 Progressi</button>' +
+                    '<button class="portal-tab" data-ptab="pagamenti" onclick="switchPortalTab(\'pagamenti\', this)">💳 Pagamenti</button>' +
+                    '<button class="portal-tab" data-ptab="storico" onclick="switchPortalTab(\'storico\', this)">📝 Storico</button>' +
+                '</div>' +
+                '<div class="portal-panel active" data-ppanel="sessioni">' + upcomingHtml + '</div>' +
+                '<div class="portal-panel" data-ppanel="schede">' + workoutsHtml + '</div>' +
+                '<div class="portal-panel" data-ppanel="progressi">' + measureHtml + '</div>' +
+                '<div class="portal-panel" data-ppanel="pagamenti">' + paymentsHtml + '</div>' +
+                '<div class="portal-panel" data-ppanel="storico">' + timelineHtml + '</div>' +
                 '<div class="portal-footer">Dati aggiornati automaticamente dal tuo trainer</div>';
+        }
+
+        function switchPortalTab(tabName, btnEl) {
+            document.querySelectorAll('.portal-tab').forEach(function(t){ t.classList.remove('active'); });
+            document.querySelectorAll('.portal-panel').forEach(function(p){ p.classList.remove('active'); });
+            if (btnEl) btnEl.classList.add('active');
+            var panel = document.querySelector('.portal-panel[data-ppanel="' + tabName + '"]');
+            if (panel) panel.classList.add('active');
         }
 
         var _originalSaveData = saveData;
@@ -4326,9 +4471,154 @@ function syncRpe(idx,s){var rp=document.getElementById('rpe_'+idx+'_'+s),ri=docu
         window.addEventListener('DOMContentLoaded', function() {
             if (checkPortalMode()) return;
             init();
+            initPushNotifications();
+            setupInboxAutoRefresh();
         });
 
     
+
+        // ══════════════════════════════════════
+        // INBOX RICHIESTE CLIENTI
+        // ══════════════════════════════════════
+        var inboxRequestsCache = [];
+        var inboxLastSeenKey = 'ptInboxLastSeen';
+        var inboxBadgeTimer = null;
+        var lastNotifiedIds = {};
+
+        function getInboxLastSeen() {
+            try { return localStorage.getItem(inboxLastSeenKey) || '1970-01-01T00:00:00.000Z'; }
+            catch (e) { return '1970-01-01T00:00:00.000Z'; }
+        }
+
+        function setInboxLastSeen(value) {
+            try { localStorage.setItem(inboxLastSeenKey, value); }
+            catch (e) {}
+        }
+
+        function collectInboxRequests() {
+            if (!window._fbDb || !window._fbCollection || !window._fbGetDocs) return Promise.resolve([]);
+            return window._fbGetDocs(window._fbCollection(window._fbDb, 'portal')).then(function(portalSnap) {
+                var portalDocs = [];
+                portalSnap.forEach(function(docSnap) { portalDocs.push({ token: docSnap.id, data: docSnap.data() || {} }); });
+                var requests = [];
+                var promises = portalDocs.map(function(portal) {
+                    return window._fbGetDocs(window._fbCollection(window._fbDb, 'portal', portal.token, 'actions')).then(function(actionsSnap) {
+                        actionsSnap.forEach(function(actionSnap) {
+                            var a = actionSnap.data() || {};
+                            a.id = actionSnap.id;
+                            a.portalToken = portal.token;
+                            a.clientName = portal.data.name || '';
+                            a.clientSurname = portal.data.surname || '';
+                            requests.push(a);
+                        });
+                    }).catch(function(){});
+                });
+                return Promise.all(promises).then(function(){
+                    requests.sort(function(a,b){ return new Date(b.createdAt || 0) - new Date(a.createdAt || 0); });
+                    return requests;
+                });
+            });
+        }
+
+        function inboxLabelForAction(a) {
+            if (a.type === 'session_confirm') return 'Conferma presenza';
+            if (a.type === 'session_change_request') return 'Richiesta cambio sessione';
+            if (a.type === 'workout_feedback') return 'Feedback scheda';
+            return 'Richiesta';
+        }
+
+        function renderInbox() {
+            var panel = document.getElementById('inboxPanel');
+            if (!panel) return;
+            if (!inboxRequestsCache.length) {
+                panel.innerHTML = '<div class="empty-state"><div class="empty-state-icon">📭</div><div class="empty-state-title">Nessuna richiesta</div><p>Quando un cliente invia una richiesta dal suo portale, la trovi qui.</p></div>';
+                return;
+            }
+            var lastSeen = new Date(getInboxLastSeen());
+            panel.innerHTML = inboxRequestsCache.map(function(a) {
+                var dt = new Date(a.createdAt || Date.now());
+                var unread = dt > lastSeen && a.status !== 'done';
+                var isDone = a.status === 'done';
+                return '<div class="detail-view inbox-item' + (unread ? ' unread' : '') + '">' +
+                    '<div class="inbox-top"><strong>' + inboxLabelForAction(a) + '</strong><span class="client-status status-' + (isDone ? 'active' : 'inactive') + '">' + (isDone ? 'Gestita' : 'Nuova') + '</span></div>' +
+                    '<div class="inbox-client">' + (a.clientName || 'Cliente') + ' ' + (a.clientSurname || '') + '</div>' +
+                    '<div class="inbox-meta">' + dt.toLocaleString('it-IT') + '</div>' +
+                    (a.note ? '<div class="inbox-note">' + a.note + '</div>' : '') +
+                    ((a.energy || a.rpe || a.weight) ? '<div class="inbox-note">' + (a.energy ? 'Energia: ' + a.energy + ' · ' : '') + (a.rpe ? 'RPE: ' + a.rpe + ' · ' : '') + (a.weight ? 'Peso: ' + a.weight + ' kg' : '') + '</div>' : '') +
+                    (!isDone ? '<div class="portal-action-row"><button class="btn btn-small" onclick="markInboxHandled(\'' + a.portalToken + '\', \'' + a.id + '\')">Segna gestita</button></div>' : '') +
+                '</div>';
+            }).join('');
+        }
+
+        function markInboxHandled(token, actionId) {
+            if (!window._fbSetDoc || !window._fbDoc) return;
+            var ref = window._fbDoc(window._fbDb, 'portal', token, 'actions', actionId);
+            window._fbSetDoc(ref, { status: 'done', handledAt: new Date().toISOString() }, { merge: true }).then(function(){ refreshInbox(); });
+        }
+
+        function refreshInbox() {
+            collectInboxRequests().then(function(list) {
+                inboxRequestsCache = list;
+                var lastSeen = new Date(getInboxLastSeen());
+                var unreadList = list.filter(function(a){ return new Date(a.createdAt || 0) > lastSeen && a.status !== 'done'; });
+                var badge = document.getElementById('inboxBadge');
+                if (badge) {
+                    badge.style.display = unreadList.length ? 'inline-flex' : 'none';
+                    badge.textContent = unreadList.length;
+                }
+                notifyNewRequests(unreadList);
+                renderInbox();
+            });
+        }
+
+        function openInboxTab() {
+            refreshInbox();
+            setTimeout(function() { setInboxLastSeen(new Date().toISOString()); }, 3000);
+        }
+
+        function setupInboxAutoRefresh() {
+            if (inboxBadgeTimer) clearInterval(inboxBadgeTimer);
+            inboxBadgeTimer = setInterval(refreshInbox, 30000);
+            refreshInbox();
+        }
+
+        function initPushNotifications() {
+            if (!('Notification' in window)) return;
+            var btn = document.getElementById('pushEnableBtn');
+            if (!btn) return;
+            function updateBtnLabel() {
+                if (Notification.permission === 'granted') {
+                    btn.textContent = '🔔 Notifiche attive';
+                    btn.disabled = true;
+                } else if (Notification.permission === 'denied') {
+                    btn.textContent = '🔕 Notifiche bloccate';
+                    btn.disabled = true;
+                } else {
+                    btn.textContent = '🔔 Attiva notifiche';
+                    btn.disabled = false;
+                }
+            }
+            updateBtnLabel();
+            btn.addEventListener('click', function() {
+                Notification.requestPermission().then(function(permission) {
+                    updateBtnLabel();
+                    if (permission === 'granted') {
+                        try { new Notification('Notifiche attivate ✅', { body: 'Riceverai un avviso per ogni nuova richiesta cliente.' }); } catch (e) {}
+                    }
+                });
+            });
+        }
+
+        function notifyNewRequests(unreadList) {
+            if (!('Notification' in window) || Notification.permission !== 'granted') return;
+            unreadList.forEach(function(a) {
+                var uniqueKey = a.portalToken + '_' + a.id;
+                if (lastNotifiedIds[uniqueKey]) return;
+                lastNotifiedIds[uniqueKey] = true;
+                try { new Notification(inboxLabelForAction(a), { body: (a.clientName || 'Un cliente') + ' ' + (a.clientSurname || '') + ' ha inviato una richiesta.', icon: './icon-192.png' }); } catch (e) {}
+            });
+        }
+
         // ══════════════════════════════════════
         // FIREBASE SYNC
         // ══════════════════════════════════════
